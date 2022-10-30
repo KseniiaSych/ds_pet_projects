@@ -71,5 +71,9 @@ print("Accuracy - %f \nPrecision - %f \nRecall - %f \nF1 - %f" % (accuracy, prec
 ```
 
 ```python
+tree.plot_tree(clf)
+```
+
+```python
 
 ```
