@@ -21,72 +21,81 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.ensemble import RandomForestClassifier
 import matplotlib.pyplot as plt
+from statistics import mean
 ```
 
 ```python
-titanic_data = pd.read_csv("../data/titanic/train.csv")
-print("Dataset size - ", len(titanic_data))
+titanic_dataset = pd.read_csv("../data/titanic/train.csv")
+print("Dataset size - ", len(titanic_dataset))
+```
+
+```python
+titanic_dataset.head()
+```
+
+```python
+titanic_dataset.describe()
 ```
 
 ```python
 def preprocess_data(df):
-    X = df.drop(['Name', 'Ticket', 'Cabin', 'PassengerId'], axis=1)
-    X.replace(['male', 'female'],[0, 1], inplace=True)
-    embarked = X['Embarked'].unique()
-    map_embarked_int = {name: n for n, name in enumerate(embarked)}
-    X["Embarked"] = X['Embarked'].replace(map_embarked_int)
+    X = df.drop(['PassengerId', 'Name', 'Ticket', 'Cabin'], axis=1)
+    X['Sex'] = X['Sex'].map({'male':0, 'female':1})
+    X['Embarked'] = X['Embarked'].map({'C':0, 'Q':1, 'S':2})
+    X['Embarked'] = X['Embarked'].fillna(2)
     X=X.dropna()
+    
     Y = X['Survived'].copy().to_numpy()
     X = X.drop('Survived', axis=1)
     return X, Y
 ```
 
 ```python
-np.random.shuffle(titanic_data.values)
-train, test = train_test_split(titanic_data, test_size=0.2)
+np.random.shuffle(titanic_dataset.values)
+train, test = train_test_split(titanic_dataset, test_size=0.2)
 ```
 
 ```python
-titanic_data, titanic_target = preprocess_data(train)
-print("Train size = ", len(titanic_target))
-test_data, test_target = preprocess_data(test)
-print("Test size = ", len(test_target))
+X_train, Y_train = preprocess_data(train)
+print("Train size = ", len(X_train))
+X_test, Y_test = preprocess_data(test)
+print("Test size = ", len(X_test))
 ```
 
 ```python
 clf = tree.DecisionTreeClassifier()
-clf = clf.fit(titanic_data, titanic_target)
+clf = clf.fit(X_train, Y_train)
 ```
 
 ```python
-y_pred = clf.predict(test_data)
+Y_pred = clf.predict(X_test)
 ```
 
 ```python
-accuracy = accuracy_score(test_target, y_pred)
-precision = precision_score(test_target, y_pred)
-recall = recall_score(test_target, y_pred)
-f1 = f1_score(test_target, y_pred)
+accuracy = accuracy_score(Y_test, Y_pred)
+precision = precision_score(Y_test, Y_pred)
+recall = recall_score(Y_test, Y_pred)
+f1 = f1_score(Y_test, Y_pred)
 
 print("Decision tree metrics on test data:")
 print("Accuracy - %f \nPrecision - %f \nRecall - %f \nF1 - %f" % (accuracy, precision, recall, f1))
 ```
 
-```python jupyter={"outputs_hidden": true} tags=[]
+```python tags=[] jupyter={"outputs_hidden": true}
 tree.plot_tree(clf)
 ```
 
 ```python
 forest_clf = RandomForestClassifier(n_estimators=25, random_state=0)
-forest_clf.fit(titanic_data, titanic_target)
-forest_y_pred = forest_clf.predict(test_data)
+forest_clf.fit(X_train, Y_train)
+forest_y_pred = forest_clf.predict(X_test)
 ```
 
-```python
-forest_accuracy = accuracy_score(test_target, forest_y_pred)
-forest_precision = precision_score(test_target, forest_y_pred)
-forest_recall = recall_score(test_target, forest_y_pred)
-forest_f1 = f1_score(test_target, forest_y_pred)
+```python tags=[]
+forest_accuracy = accuracy_score(Y_test, forest_y_pred)
+forest_precision = precision_score(Y_test, forest_y_pred)
+forest_recall = recall_score(Y_test, forest_y_pred)
+forest_f1 = f1_score(Y_test, forest_y_pred)
 
 print("Decision tree metrics on test data:")
 print("Accuracy - %f \nPrecision - %f \nRecall - %f \nF1 - %f" % (forest_accuracy, forest_precision, forest_recall, forest_f1))
@@ -97,11 +106,16 @@ accuracies = []
 f1s = []
 values = range(5,80,5)
 for i in values:
-    forest_with_estimators = RandomForestClassifier(n_estimators=i, random_state=0)
-    forest_with_estimators.fit(titanic_data, titanic_target)
-    y_hat = forest_with_estimators.predict(test_data)
-    accuracies.append(accuracy_score(test_target, y_hat))
-    f1s.append(f1_score(test_target, y_hat))
+    iter_acc = []
+    iter_f1 = []
+    for j in range(10):
+        forest_with_estimators = RandomForestClassifier(n_estimators=i, random_state=0)
+        forest_with_estimators.fit(X_train, Y_train)
+        y_hat = forest_with_estimators.predict(X_test)
+        iter_acc.append(accuracy_score(Y_test, y_hat))
+        iter_f1.append(f1_score(Y_test, y_hat))
+    accuracies.append(mean(iter_acc))
+    f1s.append( mean(iter_f1))                 
 ```
 
 ```python

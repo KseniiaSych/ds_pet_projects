@@ -29,7 +29,7 @@ df = pd.read_csv("../data/titanic/train.csv")
 ```
 
 ```python
-df
+df.head()
 ```
 
 ```python
