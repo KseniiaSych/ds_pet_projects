@@ -19,6 +19,8 @@ import numpy as np
 from sklearn import tree
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+from sklearn.ensemble import RandomForestClassifier
+import matplotlib.pyplot as plt
 ```
 
 ```python
@@ -70,8 +72,44 @@ print("Decision tree metrics on test data:")
 print("Accuracy - %f \nPrecision - %f \nRecall - %f \nF1 - %f" % (accuracy, precision, recall, f1))
 ```
 
-```python
+```python jupyter={"outputs_hidden": true} tags=[]
 tree.plot_tree(clf)
+```
+
+```python
+forest_clf = RandomForestClassifier(n_estimators=25, random_state=0)
+forest_clf.fit(titanic_data, titanic_target)
+forest_y_pred = forest_clf.predict(test_data)
+```
+
+```python
+forest_accuracy = accuracy_score(test_target, forest_y_pred)
+forest_precision = precision_score(test_target, forest_y_pred)
+forest_recall = recall_score(test_target, forest_y_pred)
+forest_f1 = f1_score(test_target, forest_y_pred)
+
+print("Decision tree metrics on test data:")
+print("Accuracy - %f \nPrecision - %f \nRecall - %f \nF1 - %f" % (forest_accuracy, forest_precision, forest_recall, forest_f1))
+```
+
+```python
+accuracies = []
+f1s = []
+values = range(5,80,5)
+for i in values:
+    forest_with_estimators = RandomForestClassifier(n_estimators=i, random_state=0)
+    forest_with_estimators.fit(titanic_data, titanic_target)
+    y_hat = forest_with_estimators.predict(test_data)
+    accuracies.append(accuracy_score(test_target, y_hat))
+    f1s.append(f1_score(test_target, y_hat))
+```
+
+```python
+plt.plot(values,accuracies, 'b-', label="accuracy")
+plt.plot(values,f1s, 'g-', label="f1")
+plt.legend(loc="upper left")
+plt.xlabel("Number of estimators")
+plt.show()
 ```
 
 ```python

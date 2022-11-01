@@ -1,4 +1,4 @@
-The repository contains list of pet projects. The goal is to learn/train to apply data science skills. s 
+This repository contains list of pet projects. The goal is to learn/train to apply data science skills.
 
 Projects are following: 
 1. Titanic dataset \
