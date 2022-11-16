@@ -50,7 +50,26 @@ def exctract_target(df, tagetName='Survived'):
     features = df.drop(tagetName, axis=1)
     return features, target
 
-def preprocess_dataset(df):
+def preprocess_dataset_numeric_class(df):
+    X = df.drop(['PassengerId', 'Name', 'Ticket', 'Cabin'], axis=1)
+   
+    X['Sex'] = X['Sex'].map({'male':0, 'female':1})
+    X['Embarked'] = X['Embarked'].fillna('Na')
+    X['Embarked'] = X['Embarked'].map({'C':0, 'Q':1, 'S':2, 'Na':4})
+    
+    X = X.dropna()
+    return X
+
+def preprocess_dataset_one_hot_encoding(df):
+    X = df.drop(['PassengerId', 'Name', 'Ticket', 'Cabin'], axis=1)
+    
+    X['Embarked'] = X['Embarked'].fillna('Na')
+    transformed = pd.get_dummies(X, columns=['Embarked', 'Sex'])
+    
+    X = transformed.dropna()
+    return X
+
+def preprocess_dataset_ohe_age_and_fare_bins(df):
     X = df.drop(['PassengerId', 'Name', 'Ticket', 'Cabin'], axis=1)
     
     X['Embarked'] = X['Embarked'].fillna('Na')
@@ -64,8 +83,37 @@ def preprocess_dataset(df):
 ```
 
 ```python
+def fit_decision_tree(Xtrain, Ytrain, Xval, Yval, max_depth=None):
+    clf = tree.DecisionTreeClassifier(max_depth=max_depth)
+    clf = clf.fit(Xtrain, Ytrain)
+    
+    Y_pred = clf.predict(Xval)
+    accuracy = accuracy_score(Yval, Y_pred)
+    precision = precision_score(Yval, Y_pred)
+    recall = recall_score(Yval, Y_pred)
+    f1 = f1_score(Yval, Y_pred)
+
+    print("Decision tree metrics on validation data:")
+    print("Accuracy - %f \nPrecision - %f \nRecall - %f \nF1 - %f" % (accuracy, precision, recall, f1))
+```
+
+```python
+def devide_and_extract(dataset):
+    train, val = train_test_split(dataset, test_size=0.2)
+    X_train, Y_train = exctract_target(train)
+    print("Train size = ", len(X_train))
+    X_val, Y_val = exctract_target(val)
+    print("Validation size = ", len(X_val))
+    return X_train, Y_train, X_val, Y_val 
+```
+
+```python
+# Use Ohe for Embarked, Sex, Age and Fare
+```
+
+```python
 np.random.shuffle(titanic_dataset.values)
-processed_titanic_dataset = preprocess_dataset(titanic_dataset)
+processed_titanic_dataset = preprocess_dataset_ohe_age_and_fare_bins(titanic_dataset)
 processed_titanic_dataset.head()
 ```
 
@@ -74,33 +122,17 @@ print("Processed dataset columns:", *processed_titanic_dataset.columns, sep='\n'
 ```
 
 ```python
-train, val = train_test_split(processed_titanic_dataset, test_size=0.2)
+X_train, Y_train, X_val, Y_val=devide_and_extract(processed_titanic_dataset)
+fit_decision_tree(X_train, Y_train, X_val, Y_val)
 ```
 
 ```python
-X_train, Y_train = exctract_target(train)
-print("Train size = ", len(X_train))
-X_val, Y_val = exctract_target(val)
-print("Validation size = ", len(X_val))
+# Decrease max_depth to analize tree
 ```
 
 ```python
-clf = tree.DecisionTreeClassifier(max_depth=3)
-clf = clf.fit(X_train, Y_train)
-```
-
-```python
-Y_pred = clf.predict(X_val)
-```
-
-```python
-accuracy = accuracy_score(Y_val, Y_pred)
-precision = precision_score(Y_val, Y_pred)
-recall = recall_score(Y_val, Y_pred)
-f1 = f1_score(Y_val, Y_pred)
-
-print("Decision tree metrics on validation data:")
-print("Accuracy - %f \nPrecision - %f \nRecall - %f \nF1 - %f" % (accuracy, precision, recall, f1))
+X_train, Y_train, X_val, Y_val=devide_and_extract(processed_titanic_dataset)
+fit_decision_tree(X_train, Y_train, X_val, Y_val, 3)
 ```
 
 ```python tags=[]
@@ -118,8 +150,27 @@ print(text_representation)
 list(zip(X_train.columns, range(len(X_train.columns))))
 ```
 
+# Compare to class as numeric value
+
 ```python
-forest_clf = RandomForestClassifier(n_estimators=20, random_state=0)
+preprocessed_numeric = preprocess_dataset_numeric_class(titanic_dataset)
+X_train, Y_train, X_val, Y_val=devide_and_extract(preprocessed_numeric)
+fit_decision_tree(X_train, Y_train, X_val, Y_val)
+```
+
+```python
+preprocessed_no_bins = preprocess_dataset_one_hot_encoding(titanic_dataset)
+X_train, Y_train, X_val, Y_val=devide_and_extract(preprocessed_bins)
+fit_decision_tree(X_train, Y_train, X_val, Y_val)
+```
+
+# RandomForestClassifier
+
+```python
+X_train, Y_train, X_val, Y_val=devide_and_extract(processed_titanic_dataset)
+
+
+forest_clf = RandomForestClassifier(n_estimators=45, random_state=0)
 forest_clf.fit(X_train, Y_train)
 forest_y_pred = forest_clf.predict(X_val)
 ```
