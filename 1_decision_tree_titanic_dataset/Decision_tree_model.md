@@ -95,6 +95,7 @@ def fit_decision_tree(Xtrain, Ytrain, Xval, Yval, max_depth=None):
 
     print("Decision tree metrics on validation data:")
     print("Accuracy - %f \nPrecision - %f \nRecall - %f \nF1 - %f" % (accuracy, precision, recall, f1))
+    return clf
 ```
 
 ```python
@@ -132,22 +133,18 @@ fit_decision_tree(X_train, Y_train, X_val, Y_val)
 
 ```python
 X_train, Y_train, X_val, Y_val=devide_and_extract(processed_titanic_dataset)
-fit_decision_tree(X_train, Y_train, X_val, Y_val, 3)
+tree_model = fit_decision_tree(X_train, Y_train, X_val, Y_val, 3)
 ```
 
 ```python tags=[]
-plt.figure(figsize=(10,10))
-tree.plot_tree(clf)
+plt.figure(figsize=(11,11))
+tree.plot_tree(tree_model, feature_names=list(X_train.columns))
 plt.show()
 ```
 
 ```python
-text_representation = tree.export_text(clf)
+text_representation = tree.export_text(tree_model, feature_names=list(X_train.columns))
 print(text_representation)
-```
-
-```python
-list(zip(X_train.columns, range(len(X_train.columns))))
 ```
 
 # Compare to class as numeric value
@@ -155,13 +152,13 @@ list(zip(X_train.columns, range(len(X_train.columns))))
 ```python
 preprocessed_numeric = preprocess_dataset_numeric_class(titanic_dataset)
 X_train, Y_train, X_val, Y_val=devide_and_extract(preprocessed_numeric)
-fit_decision_tree(X_train, Y_train, X_val, Y_val)
+_ = fit_decision_tree(X_train, Y_train, X_val, Y_val)
 ```
 
 ```python
 preprocessed_no_bins = preprocess_dataset_one_hot_encoding(titanic_dataset)
-X_train, Y_train, X_val, Y_val=devide_and_extract(preprocessed_bins)
-fit_decision_tree(X_train, Y_train, X_val, Y_val)
+X_train, Y_train, X_val, Y_val=devide_and_extract(preprocessed_no_bins)
+_ = fit_decision_tree(X_train, Y_train, X_val, Y_val)
 ```
 
 # RandomForestClassifier

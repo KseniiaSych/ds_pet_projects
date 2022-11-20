@@ -93,6 +93,14 @@ names_stat.groupby(level=0).nlargest(10)
 ```
 
 ```python
+df.Sex.value_counts()
+```
+
+```python
+
+```
+
+```python
 print("10 Most common names:")
 names_stat.groupby(level=0).nsmallest(10)
 ```
@@ -110,8 +118,8 @@ rel.fig.suptitle('1st = Upper, 2nd = Middle, 3rd = Lower')
 ```
 
 ```python
-df_age_class=df.dropna(subset=['Age','Pclass'])
-sns.violinplot(data=df_age_class, y="Age", x="Pclass")
+df_age_class=df.dropna(subset=['Age','Pclass', 'Sex'])
+sns.violinplot(data=df_age_class, x="Pclass", y="Age", hue="Sex", split=True)
 ```
 
 # Survived against separate single features
@@ -126,7 +134,7 @@ plt.set_ylabel('Survival Count')
 ```
 
 ```python
-plt = (df.groupby('Sex').Survived.sum()/df.groupby('Sex').Survived.count()).plot.bar(width=1.0)
+plt = (df.groupby('Sex').Survived.mean()).plot.bar(width=1.0)
 plt.set_xlabel('Sex')
 plt.set_ylabel('Survival Probability')
 ```
@@ -141,15 +149,15 @@ df.groupby([ pd.cut(df.Age, bins)]).Survived.sum().plot.bar()
 ```python
 bins= range(0,100,5)
 df_age_survived_grouped = df.groupby([ pd.cut(df.Age, bins)])
-df_age_survived = df_age_survived_grouped.Survived.sum()/df_age_survived_grouped.Survived.count()
-df_age_survived.plot.bar(width=1.0)
+df_age_survived = df_age_survived_grouped.Survived.mean()
+df_age_survived.plot.bar()
 ```
 
 ```python
 bins= [0,5,10, 15, 20,60,100]
 df_age_survived_grouped = df.groupby([ pd.cut(df.Age, bins)])
-df_age_survived = df_age_survived_grouped.Survived.sum()/df_age_survived_grouped.Survived.count()
-df_age_survived.plot.bar(width=1.0)
+df_age_survived = df_age_survived_grouped.Survived.mean()
+df_age_survived.plot.bar()
 ```
 
 ```python
