@@ -15,15 +15,20 @@ jupyter:
 
 ```python
 import pandas as pd
+import numpy as np
 from sklearn import tree
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.calibration import CalibratedClassifierCV
-from scipy.stats import randint
+from scipy.stats import randint, uniform
 from sklearn.ensemble import RandomForestClassifier
 import matplotlib.pyplot as plt
 import graphviz 
+
+import matplotlib.pyplot as plt
+from matplotlib.legend_handler import HandlerLine2D
+import seaborn as sns
 
 import mlflow
 from mlflow.tracking import MlflowClient
@@ -68,19 +73,19 @@ titanic_dataset.Survived.value_counts()
 <!-- #endregion -->
 
 ```python
-survived_part = titanic_dataset[titanic_dataset.Survived==1]
-not_survived_sample = titanic_dataset[titanic_dataset.Survived==0].sample(n=len(survived_part))
-sampled_dataset = pd.concat([survived_part, not_survived_sample], ignore_index=True)
+dataset_processed = preprocess_dataset(titanic_dataset)
+train, val = train_test_split(dataset_processed, test_size=0.2)
 
+survived_part = train[train.Survived==1]
+not_survived_sample = train[train.Survived==0].sample(n=len(survived_part))
+train = pd.concat([survived_part, not_survived_sample], ignore_index=True)
 ```
 
 ```python
-sampled_dataset.Survived.value_counts()
+train.Survived.value_counts()
 ```
 
 ```python
-sampled_dataset_precessed = preprocess_dataset(sampled_dataset)
-train, val = train_test_split(sampled_dataset_precessed, test_size=0.2)
 X_train, Y_train = exctract_target(train)
 print("Train size = ", len(X_train))
 X_val, Y_val = exctract_target(val)
@@ -102,7 +107,7 @@ print("Accuracy - %f \nPrecision - %f \nRecall - %f \nF1 - %f" % (accuracy, prec
 ```
 
 ```python
-text_representation = tree.export_text(clf)
+text_representation = tree.export_text(clf, feature_names=list(X_train.columns))
 print(text_representation)
 ```
 
@@ -116,11 +121,12 @@ graph = graphviz.Source(dot_data)
 graph
 ```
 
+<!-- #region tags=[] jp-MarkdownHeadingCollapsed=true -->
 # Search over parameters
+<!-- #endregion -->
 
 ```python
-dataset_precessed = preprocess_dataset(sampled_dataset)
-X, Y = exctract_target(dataset_precessed)
+X, Y = exctract_target(dataset_processed)
 ```
 
 ## Exhaustive gridsearch
@@ -128,19 +134,28 @@ X, Y = exctract_target(dataset_precessed)
 ```python
 tree_classifier = tree.DecisionTreeClassifier()
 
+max_depth = list(range(50, 100, 5))
+max_depth.append(None)
+
+min_samples_split = list(np.linspace(0.1, 1, 4, endpoint=True))
+min_samples_split.extend( range(2, 30, 6))
+
+max_features = list(range(1, X.shape[1], 3))
+max_features.extend(['sqrt', 'log2'])
+
 param_grid = {'criterion': ['gini', 'entropy', 'log_loss'],
               'splitter': ['best', 'random'],
-              'min_samples_split': [2,5,10,30],
-              'max_depth': [5,10,20, 30, None],
-              'max_features':['sqrt', 'log2']
+              'min_samples_split': min_samples_split,
+              'max_depth': max_depth,
+              'max_features':max_features
              }
 search = GridSearchCV(tree_classifier, param_grid, verbose=True)
 search.fit(X, Y)
 ```
 
 ```python
-print(search.best_params_)
-print(search.score(X, Y))
+print("Best parameters - ", search.best_params_)
+print("Score -", search.score(X, Y))
 ```
 
 ## Randomized search
@@ -148,9 +163,9 @@ print(search.score(X, Y))
 ```python
 distributions = {'criterion': ['gini', 'entropy', 'log_loss'],
               'splitter': ['best', 'random'],
-              'min_samples_split': randint(2, 50),
+              'min_samples_split': uniform(),
               'max_depth': randint(1, 100),
-                'max_features':['sqrt', 'log2']}
+              'max_features': randint(1, X.shape[1])}
 random_search = RandomizedSearchCV(tree_classifier, distributions, random_state=0, cv=15, verbose=True)
 random_search.fit(X,Y)
 ```
@@ -160,7 +175,20 @@ print(random_search.best_params_)
 print(random_search.score(X, Y))
 ```
 
+```python
+#Grid search one by one parameter
+```
+
+```python
+X_train, Y_train = exctract_target(train)
+print("Train size = ", len(X_train))
+X_val, Y_val = exctract_target(val)
+print("Validation size = ", len(X_val))
+```
+
+<!-- #region tags=[] jp-MarkdownHeadingCollapsed=true -->
 # Gridsearch for random forest
+<!-- #endregion -->
 
 <!-- #region tags=[] -->
 ## Exhaustive gridsearch
@@ -193,6 +221,88 @@ random_search.fit(X,Y)
 ```python
 print(random_search.best_params_)
 print(random_search.score(X, Y))
+```
+
+<!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
+# Gridsearch over parameters with charts
+<!-- #endregion -->
+
+```python
+train, val = train_test_split(dataset_processed, test_size=0.2)
+X_train, Y_train = exctract_target(train)
+print("Train size = ", len(X_train))
+X_val, Y_val = exctract_target(val)
+print("Validation size = ", len(X_val))
+```
+
+```python
+def fit_decision_tree(Xtrain, Ytrain, Xval, Yval, model_dt):
+    model_dt.fit(Xtrain, Ytrain)
+
+    f1_train = f1_score(model_dt.predict(Xtrain), Ytrain)
+    f1_val = f1_score(model_dt.predict(Xval), Y_val)
+    
+    return f1_train, f1_val
+```
+
+```python
+def train_and_plot(parameter_name, values, createTreeFunction):
+    f1_train = []
+    f1_val = []
+    for value in values:
+        model = createTreeFunction(value)
+        t,v = fit_decision_tree(X_train, Y_train, X_val, Y_val, model)
+        f1_train.append(t)
+        f1_val.append(v)
+
+    line1, = plt.plot(values, f1_train, 'b', label='Train F1')
+    line2, = plt.plot(values, f1_val, 'r', label='Validation F1')
+    plt.legend(handler_map={line1: HandlerLine2D(numpoints=2)})
+    plt.ylabel('F1 score')
+    plt.xlabel(parameter_name)
+    plt.show()
+```
+
+```python
+max_depth = list(range(2, 100, 5))
+train_and_plot('Max depth', max_depth, lambda v: tree.DecisionTreeClassifier(max_depth=v))
+```
+
+```python
+criterions = ['gini', 'entropy', 'log_loss']
+train_and_plot('Criterions', criterions, lambda v: tree.DecisionTreeClassifier(criterion=v))
+```
+
+```python
+min_samples_split = list(np.linspace(0.1, 1, 4, endpoint=True))
+min_samples_split.extend( range(2, 30, 6))
+train_and_plot('Max samples split', min_samples_split,
+               lambda v: tree.DecisionTreeClassifier(min_samples_split=v))
+```
+
+```python
+max_features = list(range(1, X.shape[1], 1))
+max_features.extend(['sqrt', 'log2'])
+
+train_and_plot('Max features', max_features,
+               lambda v: tree.DecisionTreeClassifier(max_features=v))
+```
+
+```python
+splitter = ['best', 'random']
+train_and_plot('Splitter', splitter,
+               lambda v: tree.DecisionTreeClassifier(splitter=v))
+```
+
+```python
+n_estimators = list(range(20,400,20))
+train_and_plot('Number of estimators', n_estimators,
+               lambda v: RandomForestClassifier(criterion='gini',
+                                        max_depth=10, 
+                                        min_samples_split=2,
+                                        max_features='sqrt',
+                                        random_state=0,
+                                        n_estimators=v ))
 ```
 
 <!-- #region tags=[] -->
@@ -230,7 +340,9 @@ for idx, depth in enumerate(parameters_depth):
         mlflow.sklearn.log_model(clf, "classifier")
 ```
 
+<!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
 # MLflow sklearn
+<!-- #endregion -->
 
 ```python
 def fetch_logged_data(run_id):
