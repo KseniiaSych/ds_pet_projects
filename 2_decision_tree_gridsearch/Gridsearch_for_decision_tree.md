@@ -23,6 +23,9 @@ from sklearn.model_selection import GridSearchCV, RandomizedSearchCV
 from sklearn.calibration import CalibratedClassifierCV
 from scipy.stats import randint, uniform
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.base import BaseEstimator, TransformerMixin
+
 import matplotlib.pyplot as plt
 import graphviz 
 
@@ -121,6 +124,10 @@ graph = graphviz.Source(dot_data)
 graph
 ```
 
+```python
+clf.get_params()
+```
+
 <!-- #region tags=[] jp-MarkdownHeadingCollapsed=true -->
 # Search over parameters
 <!-- #endregion -->
@@ -134,63 +141,155 @@ X, Y = exctract_target(dataset_processed)
 ```python
 tree_classifier = tree.DecisionTreeClassifier()
 
-max_depth = list(range(50, 100, 5))
+max_depth = list(range(4, 50, 8))
 max_depth.append(None)
 
-min_samples_split = list(np.linspace(0.1, 1, 4, endpoint=True))
-min_samples_split.extend( range(2, 30, 6))
+min_samples_split = list(range(2, 30, 7))
 
-max_features = list(range(1, X.shape[1], 3))
+max_features = list(range(2, X.shape[1]+1, 2))
 max_features.extend(['sqrt', 'log2'])
 
 param_grid = {'criterion': ['gini', 'entropy', 'log_loss'],
               'splitter': ['best', 'random'],
               'min_samples_split': min_samples_split,
               'max_depth': max_depth,
-              'max_features':max_features
+              'max_features':max_features,
+              'min_samples_leaf': list(range(1,20, 4))
              }
 search = GridSearchCV(tree_classifier, param_grid, verbose=True)
 search.fit(X, Y)
 ```
 
 ```python
-print("Best parameters - ", search.best_params_)
-print("Score -", search.score(X, Y))
+search.param_grid
 ```
 
+```python
+print("Best parameters - ", search.best_params_)
+```
+
+```python
+df_results = pd.DataFrame(search.cv_results_)
+df_results = df_results.sort_values(by=["rank_test_score"])
+```
+
+```python
+df_results.head()
+```
+
+```python
+plt.plot(df_results.mean_test_score, '.')
+plt.ylim((0,1))
+plt.axhline(Y_train.mean(), color='r')
+plt.show()
+```
+
+```python
+df_results['param_max_depth'].fillna(value='No max depth', inplace = True)
+df_results.groupby('param_max_depth').mean_test_score.mean().plot.bar()
+plt.ylim((0.75, 0.8))
+plt.show()
+```
+
+```python
+df_results.groupby('param_criterion').mean_test_score.mean().plot.bar()
+plt.ylim((0.756, 0.8))
+plt.show()
+```
+
+```python
+df_results.groupby('param_splitter').mean_test_score.mean().plot.bar()
+```
+
+```python
+df_results.groupby('param_max_features').mean_test_score.mean().plot.bar()
+plt.ylim((0.7, 0.8))
+```
+
+```python
+df_results.groupby('param_min_samples_split').mean_test_score.mean().plot.bar()
+plt.ylim((0.756, 0.8))
+```
+
+```python
+df_results.groupby('param_min_samples_leaf').mean_test_score.mean().plot.bar()
+plt.ylim((0.7, 0.8))
+```
+
+```python
+df_split_leaf = df_results.groupby(['param_min_samples_split','param_min_samples_leaf']).mean_test_score.mean().reset_index()
+
+```
+
+```python
+df_split_leaf = df_split_leaf.pivot("param_min_samples_split", "param_min_samples_leaf", "mean_test_score")
+ax = sns.heatmap(df_split_leaf)
+plt.show()
+```
+
+<!-- #region tags=[] jp-MarkdownHeadingCollapsed=true -->
 ## Randomized search
+<!-- #endregion -->
 
 ```python
 distributions = {'criterion': ['gini', 'entropy', 'log_loss'],
               'splitter': ['best', 'random'],
               'min_samples_split': uniform(),
+              'min_samples_leaf': randint(1, 50),
               'max_depth': randint(1, 100),
               'max_features': randint(1, X.shape[1])}
-random_search = RandomizedSearchCV(tree_classifier, distributions, random_state=0, cv=15, verbose=True)
+random_search = RandomizedSearchCV(tree_classifier, distributions, random_state=0, cv=100, verbose=True)
 random_search.fit(X,Y)
 ```
 
 ```python
 print(random_search.best_params_)
-print(random_search.score(X, Y))
 ```
 
 ```python
-#Grid search one by one parameter
+df_random_results = pd.DataFrame(random_search.cv_results_)
+df_random_results = df_random_results.sort_values(by=["rank_test_score"])
 ```
 
 ```python
-X_train, Y_train = exctract_target(train)
-print("Train size = ", len(X_train))
-X_val, Y_val = exctract_target(val)
-print("Validation size = ", len(X_val))
+plt.plot(df_random_results.mean_test_score, '.')
+plt.ylim((0,1))
+plt.axhline(Y_train.mean(), color='r')
+plt.show()
 ```
 
-<!-- #region tags=[] jp-MarkdownHeadingCollapsed=true -->
+```python
+df_random_results['param_max_depth'].fillna(value='No max depth', inplace = True)
+df_random_results.groupby('param_max_depth').mean_test_score.mean().plot.bar()
+plt.ylim((0.7, 0.8))
+plt.show()
+```
+
+```python
+df_random_results.groupby('param_criterion').mean_test_score.mean().plot.bar()
+```
+
+```python
+df_random_results.groupby('param_splitter').mean_test_score.mean().plot.bar()
+```
+
+```python
+df_random_results.groupby('param_min_samples_split').mean_test_score.mean().plot.bar()
+```
+
+```python
+df_random_results.groupby('param_max_features').mean_test_score.mean().plot.bar()
+```
+
+```python
+df_random_results.groupby('param_min_samples_leaf').mean_test_score.mean().plot.bar()
+```
+
+<!-- #region tags=[] jp-MarkdownHeadingCollapsed=true jp-MarkdownHeadingCollapsed=true tags=[] -->
 # Gridsearch for random forest
 <!-- #endregion -->
 
-<!-- #region tags=[] -->
+<!-- #region tags=[] jp-MarkdownHeadingCollapsed=true -->
 ## Exhaustive gridsearch
 <!-- #endregion -->
 
@@ -210,7 +309,9 @@ print(search_forest.best_params_)
 print(search_forest.score(X, Y))
 ```
 
+<!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
 ## Random gridsearch
+<!-- #endregion -->
 
 ```python
 param_grid = {'n_estimators': randint(2, 500)}
@@ -223,152 +324,149 @@ print(random_search.best_params_)
 print(random_search.score(X, Y))
 ```
 
-<!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
-# Gridsearch over parameters with charts
-<!-- #endregion -->
-
-```python
-train, val = train_test_split(dataset_processed, test_size=0.2)
-X_train, Y_train = exctract_target(train)
-print("Train size = ", len(X_train))
-X_val, Y_val = exctract_target(val)
-print("Validation size = ", len(X_val))
-```
-
-```python
-def fit_decision_tree(Xtrain, Ytrain, Xval, Yval, model_dt):
-    model_dt.fit(Xtrain, Ytrain)
-
-    f1_train = f1_score(model_dt.predict(Xtrain), Ytrain)
-    f1_val = f1_score(model_dt.predict(Xval), Y_val)
-    
-    return f1_train, f1_val
-```
-
-```python
-def train_and_plot(parameter_name, values, createTreeFunction):
-    f1_train = []
-    f1_val = []
-    for value in values:
-        model = createTreeFunction(value)
-        t,v = fit_decision_tree(X_train, Y_train, X_val, Y_val, model)
-        f1_train.append(t)
-        f1_val.append(v)
-
-    line1, = plt.plot(values, f1_train, 'b', label='Train F1')
-    line2, = plt.plot(values, f1_val, 'r', label='Validation F1')
-    plt.legend(handler_map={line1: HandlerLine2D(numpoints=2)})
-    plt.ylabel('F1 score')
-    plt.xlabel(parameter_name)
-    plt.show()
-```
-
-```python
-max_depth = list(range(2, 100, 5))
-train_and_plot('Max depth', max_depth, lambda v: tree.DecisionTreeClassifier(max_depth=v))
-```
-
-```python
-criterions = ['gini', 'entropy', 'log_loss']
-train_and_plot('Criterions', criterions, lambda v: tree.DecisionTreeClassifier(criterion=v))
-```
-
-```python
-min_samples_split = list(np.linspace(0.1, 1, 4, endpoint=True))
-min_samples_split.extend( range(2, 30, 6))
-train_and_plot('Max samples split', min_samples_split,
-               lambda v: tree.DecisionTreeClassifier(min_samples_split=v))
-```
-
-```python
-max_features = list(range(1, X.shape[1], 1))
-max_features.extend(['sqrt', 'log2'])
-
-train_and_plot('Max features', max_features,
-               lambda v: tree.DecisionTreeClassifier(max_features=v))
-```
-
-```python
-splitter = ['best', 'random']
-train_and_plot('Splitter', splitter,
-               lambda v: tree.DecisionTreeClassifier(splitter=v))
-```
-
-```python
-n_estimators = list(range(20,400,20))
-train_and_plot('Number of estimators', n_estimators,
-               lambda v: RandomForestClassifier(criterion='gini',
-                                        max_depth=10, 
-                                        min_samples_split=2,
-                                        max_features='sqrt',
-                                        random_state=0,
-                                        n_estimators=v ))
-```
-
 <!-- #region tags=[] -->
 # Use mlflow with gridsearch
 <!-- #endregion -->
 
 ```python
 EXPERIMENT_NAME = "mlflow-decisiontree_depth"
+```
+
+```python
 EXPERIMENT_ID = mlflow.create_experiment(EXPERIMENT_NAME)
 ```
 
 ```python
-parameters_depth = list(range(2,70,10))
-parameters_depth.append(None)
-
-for idx, depth in enumerate(parameters_depth):
-    clf = tree.DecisionTreeClassifier(max_depth=depth)
-    clf.fit(X_train, Y_train)
-    y_pred = clf.predict(X_val)
-    accuracy = accuracy_score(Y_val, y_pred)
-
-    # Start MLflow
-    RUN_NAME = f"run_{idx}"
-    with mlflow.start_run(experiment_id=EXPERIMENT_ID, run_name=RUN_NAME) as run:
-        # Retrieve run id
-        RUN_ID = run.info.run_id
-
-        # Track parameters
-        mlflow.log_param("depth", depth)
-
-        # Track metrics
-        mlflow.log_metric("accuracy", accuracy)
-
-        # Track model
-        mlflow.sklearn.log_model(clf, "classifier")
+EXPERIMENT_ID = mlflow.set_experiment(EXPERIMENT_NAME).name
 ```
 
-<!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
-# MLflow sklearn
-<!-- #endregion -->
-
 ```python
-def fetch_logged_data(run_id):
-    client = MlflowClient()
-    data = client.get_run(run_id).data
-    tags = {k: v for k, v in data.tags.items() if not k.startswith("mlflow.")}
-    artifacts = [f.path for f in client.list_artifacts(run_id, "model")]
-    return data.params, data.metrics, tags, artifacts
+max_depth = list(range(4, 50, 8))
+max_depth.append(None)
 
-# enable autologging
+min_samples_split = list(range(2, 30, 7))
+
+max_features = list(range(2, X.shape[1]+1, 2))
+
+param_grid = {'criterion': ['gini', 'entropy', 'log_loss'],
+              'splitter': ['best', 'random'],
+              'min_samples_split': min_samples_split,
+              'max_depth': max_depth,
+              'max_features':max_features,
+              'min_samples_leaf': list(range(1,20, 4))
+             }
+clf_tree = tree.DecisionTreeClassifier()
+mlf_search = GridSearchCV(clf_tree, param_grid)
+
 mlflow.sklearn.autolog()
-
-# train a model
-model =tree.DecisionTreeClassifier()
 with mlflow.start_run() as run:
-    model.fit(X, Y)
+    mlf_search.fit(X, Y)
 
-# fetch logged data
-params, metrics, tags, artifacts = fetch_logged_data(run.info.run_id)
+autolog_run = mlflow.last_active_run()
 
-pprint(params)
-pprint(metrics)
-pprint(tags)
-pprint(artifacts)
+```
+
+# Pipelines
+
+```python
+class DropColumns(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        pass
+
+    def fit(self, X, y = None):
+        return self
+    
+    def transform(self, X):
+        X = X.drop(['PassengerId', 'Name', 'Ticket', 'Cabin'], axis=1)
+        return X
+    
+class ProcessNa(BaseEstimator, TransformerMixin):
+    def __init__(self, use_category_for_na=True):
+        self.use_category_for_na = use_category_for_na
+
+    def fit(self, X, y = None):
+        return self
+    
+    def transform(self, X):
+        if  self.use_category_for_na:
+            X['Embarked'] = X['Embarked'].fillna('Na')
+        else:
+            X['Embarked'] = X['Embarked'].fillna(X['Embarked'].mode())
+        return X
+    
+class ProcessCategories(BaseEstimator, TransformerMixin):
+    def __init__(self, use_ohe=True):
+        self.use_ohe = use_ohe
+
+    def fit(self, X, y = None):
+        return self
+            
+    def transform(self, X):   
+        if self.use_ohe:         
+            X = pd.get_dummies(X, columns=['Embarked', 'Sex'])
+        else:
+            X['Sex'] = X['Sex'].map({'male':0, 'female':1})
+            X['Embarked'] = X['Embarked'].map({'C':0, 'Q':1, 'S':2, 'Na':4})
+        return X
+
+class ProcessBins(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        pass
+
+    def fit(self, X, y = None):
+        return self
+            
+    def transform(self, X): 
+        X['Age'] = pd.cut(X['Age'], bins=age_bins, labels=age_labels)
+        X['Fare'] = pd.cut(X['Fare'], bins=fare_bins, labels=fare_labels)
+        X = pd.get_dummies(X, columns=['Age', 'Fare'])
+        return X
+
 ```
 
 ```python
+def exctract_target(df, tagetName='Survived'):
+    target = df[tagetName].copy().to_numpy()
+    features = df.drop(tagetName, axis=1)
+    return features, target
+```
 
+```python
+# Not sure how to do it with pipeline
+data_set_age_present = titanic_dataset[titanic_dataset['Age'].notna()]
+X,Y = exctract_target(data_set_age_present)
+```
+
+```python
+steps = [('drop_columns', DropColumns()), 
+         ('process_na', ProcessNa()),
+         ('process_categories', ProcessCategories()),
+         ('clf', tree.DecisionTreeClassifier())
+         ]
+pipeline = Pipeline(steps)
+```
+
+```python
+pipeline.fit(X, Y)
+```
+
+```python
+param_grid = dict(process_na = [ ProcessNa(), ProcessNa(False)],
+                process_categories = [ProcessCategories(),  ProcessCategories(False)])
+grid_search = GridSearchCV(pipeline, param_grid=param_grid)
+```
+
+```python
+grid_search.fit(X, Y)
+```
+
+```python
+y_pred = final_pipeline.predict(X_test)
+```
+
+```python
+print("Accuracy Score: ", accuracy_score(y_test, y_pred))
+print("F1 Score: ", f1_score(y_test, y_pred, average='weighted'))
+print("Precision Score: ", precision_score(y_test, y_pred, average='weighted'))
+print("Recall Score: ", recall_score(y_test, y_pred, average='weighted'))
 ```
