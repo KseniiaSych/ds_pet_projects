@@ -77,6 +77,7 @@ titanic_dataset.Survived.value_counts()
 
 ```python
 dataset_processed = preprocess_dataset(titanic_dataset)
+
 train, val = train_test_split(dataset_processed, test_size=0.2)
 
 survived_part = train[train.Survived==1]
@@ -128,7 +129,7 @@ graph
 clf.get_params()
 ```
 
-<!-- #region tags=[] jp-MarkdownHeadingCollapsed=true -->
+<!-- #region tags=[] -->
 # Search over parameters
 <!-- #endregion -->
 
@@ -285,7 +286,7 @@ df_random_results.groupby('param_max_features').mean_test_score.mean().plot.bar(
 df_random_results.groupby('param_min_samples_leaf').mean_test_score.mean().plot.bar()
 ```
 
-<!-- #region tags=[] jp-MarkdownHeadingCollapsed=true jp-MarkdownHeadingCollapsed=true tags=[] -->
+<!-- #region tags=[] jp-MarkdownHeadingCollapsed=true tags=[] jp-MarkdownHeadingCollapsed=true -->
 # Gridsearch for random forest
 <!-- #endregion -->
 
@@ -329,14 +330,11 @@ print(random_search.score(X, Y))
 <!-- #endregion -->
 
 ```python
+X, Y = exctract_target(dataset_processed)
+```
+
+```python
 EXPERIMENT_NAME = "mlflow-decisiontree_depth"
-```
-
-```python
-EXPERIMENT_ID = mlflow.create_experiment(EXPERIMENT_NAME)
-```
-
-```python
 EXPERIMENT_ID = mlflow.set_experiment(EXPERIMENT_NAME).name
 ```
 
@@ -358,15 +356,20 @@ param_grid = {'criterion': ['gini', 'entropy', 'log_loss'],
 clf_tree = tree.DecisionTreeClassifier()
 mlf_search = GridSearchCV(clf_tree, param_grid)
 
-mlflow.sklearn.autolog()
+mlflow.sklearn.autolog(log_models=False, max_tuning_runs=400)
 with mlflow.start_run() as run:
     mlf_search.fit(X, Y)
-
-autolog_run = mlflow.last_active_run()
-
 ```
 
+<!-- #region tags=[] -->
 # Pipelines
+<!-- #endregion -->
+
+## version 1
+
+```python
+mlflow.sklearn.autolog(disable=True)
+```
 
 ```python
 class DropColumns(BaseEstimator, TransformerMixin):
@@ -392,6 +395,10 @@ class ProcessNa(BaseEstimator, TransformerMixin):
             X['Embarked'] = X['Embarked'].fillna('Na')
         else:
             X['Embarked'] = X['Embarked'].fillna(X['Embarked'].mode())
+        
+        X = X.fillna(method='bfill')
+        X = X.fillna(method='ffill')
+        
         return X
     
 class ProcessCategories(BaseEstimator, TransformerMixin):
@@ -399,14 +406,17 @@ class ProcessCategories(BaseEstimator, TransformerMixin):
         self.use_ohe = use_ohe
 
     def fit(self, X, y = None):
+        self.embarked_categories = X['Embarked'].unique()
         return self
             
     def transform(self, X):   
         if self.use_ohe:         
-            X = pd.get_dummies(X, columns=['Embarked', 'Sex'])
+            X['Embarked'] = X['Embarked'].astype(pd.CategoricalDtype(categories=self.embarked_categories))
+            X = pd.get_dummies(X, columns=['Embarked', 'Sex'], dummy_na=False)
         else:
             X['Sex'] = X['Sex'].map({'male':0, 'female':1})
             X['Embarked'] = X['Embarked'].map({'C':0, 'Q':1, 'S':2, 'Na':4})
+        
         return X
 
 class ProcessBins(BaseEstimator, TransformerMixin):
@@ -432,18 +442,46 @@ def exctract_target(df, tagetName='Survived'):
 ```
 
 ```python
-# Not sure how to do it with pipeline
-data_set_age_present = titanic_dataset[titanic_dataset['Age'].notna()]
-X,Y = exctract_target(data_set_age_present)
+train, test = train_test_split(titanic_dataset, test_size=0.2, random_state=123)
+train_copy = train.copy()
 ```
 
 ```python
-steps = [('drop_columns', DropColumns()), 
-         ('process_na', ProcessNa()),
-         ('process_categories', ProcessCategories()),
-         ('clf', tree.DecisionTreeClassifier())
+X,Y = exctract_target(train_copy)
+X_test, y_test = exctract_target(test)
+```
+
+```python
+preprocessing_steps = [
+    ('drop_columns', DropColumns()),
+    ('process_na', ProcessNa(use_category_for_na=True)),
+    ('process_categories', ProcessCategories(use_ohe=True)),
          ]
+preprocessing_pipeline = Pipeline(preprocessing_steps)
+```
+
+```python
+preprocessing_pipeline.fit(X, Y)
+```
+
+```python
+preprocessing_pipeline.transform(X)
+```
+
+```python
+preprocessing_pipeline.transform(X_test)
+```
+
+```python
+steps = [
+    *preprocessing_steps,
+    ('clf', tree.DecisionTreeClassifier())
+]
 pipeline = Pipeline(steps)
+```
+
+```python
+pipeline
 ```
 
 ```python
@@ -451,13 +489,40 @@ pipeline.fit(X, Y)
 ```
 
 ```python
-param_grid = dict(process_na = [ ProcessNa(), ProcessNa(False)],
-                process_categories = [ProcessCategories(),  ProcessCategories(False)])
-grid_search = GridSearchCV(pipeline, param_grid=param_grid)
+pipeline.predict(X_test)
 ```
 
 ```python
-grid_search.fit(X, Y)
+max_depth = list(range(4, 50, 8))
+max_depth.append(None)
+
+max_features = list(range(2, X.shape[1]+1, 2))
+```
+
+```python
+param_grid = dict(
+    process_na = [ProcessNa(False), ProcessNa(True)],
+    process_categories = [ProcessCategories(True), ProcessCategories(False)],
+    clf__criterion = ['gini', 'entropy', 'log_loss'],
+    clf__max_depth = max_depth,
+    clf__max_features = max_features,
+    clf__random_state = [42],
+    clf__splitter = ['best', 'random']
+)
+grid_search = RandomizedSearchCV(pipeline, param_distributions=param_grid, n_jobs=-1, n_iter=300)
+
+```
+
+```python
+EXPERIMENT_NAME = 'mlflow-decisiontree_pipeline'
+EXPERIMENT_ID = mlflow.set_experiment(EXPERIMENT_NAME).name
+mlflow.sklearn.autolog(log_models=False, max_tuning_runs=500)
+with mlflow.start_run() as run:
+    grid_search.fit(X, Y)
+```
+
+```python
+final_pipeline = grid_search.best_estimator_
 ```
 
 ```python
@@ -469,4 +534,72 @@ print("Accuracy Score: ", accuracy_score(y_test, y_pred))
 print("F1 Score: ", f1_score(y_test, y_pred, average='weighted'))
 print("Precision Score: ", precision_score(y_test, y_pred, average='weighted'))
 print("Recall Score: ", recall_score(y_test, y_pred, average='weighted'))
+```
+
+## version 2
+
+```python
+from sklearn.compose import ColumnTransformer
+from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import OneHotEncoder, FunctionTransformer
+```
+
+```python
+mlflow.sklearn.autolog(disable=True)
+```
+
+```python
+train, val = train_test_split(titanic_dataset, test_size=0.2)
+X_train, Y_train = exctract_target(train)
+X_val, y_val = exctract_target(val)
+```
+
+```python
+category_columns = ['Embarked', 'Sex', 'Pclass']
+cat_transformer = Pipeline(steps=[
+    ('transformer', FunctionTransformer(lambda x: x.astype("string"), validate=False)),
+    ('transformer_na', FunctionTransformer(lambda x: x.replace({pd.NA: None}), validate=False)),
+    ('imputer', SimpleImputer(strategy='constant', fill_value = 'Na')),
+    ('onehot', OneHotEncoder(handle_unknown='ignore', sparse=False))
+])
+
+columns_to_pass = ['Age', 'SibSp', 'Parch', 'Fare']
+pass_transformer = Pipeline(steps=[
+    ('transformer_na_pass', FunctionTransformer(lambda x: x.replace({pd.NA: np.nan}), validate=False)),
+    ('imputer', SimpleImputer(strategy='mean'))
+])
+
+preprocessor = ColumnTransformer(
+    transformers=[
+        ('category', cat_transformer, category_columns),
+        ('rest', pass_transformer, columns_to_pass)
+    ])
+
+clf = tree.DecisionTreeClassifier()
+```
+
+```python
+clf_pipeline = Pipeline(steps=[   
+    ('preprocess',  preprocessor),
+    ('model', clf)
+])
+```
+
+```python
+clf_pipeline.fit(X_train, Y_train)
+```
+
+```python
+y_pred = clf_pipeline.predict(X_val)
+```
+
+```python
+print("Accuracy Score: ", accuracy_score(y_val, y_pred))
+print("F1 Score: ", f1_score(y_val, y_pred, average='weighted'))
+print("Precision Score: ", precision_score( y_val, y_pred, average='weighted'))
+print("Recall Score: ", recall_score(y_val, y_pred, average='weighted'))
+```
+
+```python
+
 ```
