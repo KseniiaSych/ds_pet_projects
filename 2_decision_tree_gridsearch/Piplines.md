@@ -125,7 +125,7 @@ pipeline.predict(X_test)
 ```
 
 ```python
-max_depth = list(range(4, 50, 8))
+max_depth = list(range(2, 15, 2))
 max_depth.append(None)
 
 max_features = list(range(2, X.shape[1]+1, 2))
@@ -135,7 +135,8 @@ max_features = list(range(2, X.shape[1]+1, 2))
 param_grid = dict(
     process_na_category = [FillNaCommon(columns_with_na_category), 
                            FillNaWithConst('Na', columns_with_na_category)],
-    process_categories = [ProcessCategoriesAsIndex(category_columns), ProcessCategoriesOHE(category_columns)],
+    process_categories = [ProcessCategoriesAsIndex(category_columns), 
+                          ProcessCategoriesOHE(category_columns)],
     process_bins = [ProcessBins(columns_for_bins), ProcessBins()],
     clf__criterion = ['gini', 'entropy', 'log_loss'],
     clf__max_depth = max_depth,
