@@ -5,7 +5,7 @@ from pandas.api.types import is_string_dtype
 from pandas.api.types import is_numeric_dtype
 from pandas.util.testing import assert_frame_equal
 
-from CustomTransformers import (SelectColumns, FillNaCommon, FillNaWithConst, ProcessCategoriesAsIndex, 
+from CustomTransformers import (SelectColumns, FillNaMode, FillNaWithConst, ProcessCategoriesAsIndex, 
                                 ProcessCategoriesOHE, ProcessBins)
 
 
@@ -23,7 +23,7 @@ class TestSelectColumns(unittest.TestCase):
         self.assertListEqual(list(test_df.columns), baseline, "Should not change input")
 
         
-class TestFillNaCommon(unittest.TestCase):
+class TestFillNaMode(unittest.TestCase):
 
     def test_transform(self):
         test_df = pd.util.testing.makeMixedDataFrame()
@@ -32,7 +32,7 @@ class TestFillNaCommon(unittest.TestCase):
         
         test_df.loc[test_df['A'] == 0, 'A'] = None
         
-        transformer = FillNaCommon([column])
+        transformer = FillNaMode([column])
         processed_data = transformer.fit_transform(test_df)
         
         self.assertEqual(processed_data[column].isna().sum(), 0, "Should fill Na s")

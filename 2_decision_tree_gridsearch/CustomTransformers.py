@@ -9,6 +9,9 @@ from pandas.api.types import is_numeric_dtype
 class SelectColumns(BaseEstimator, TransformerMixin):
     def __init__(self, columns = None):
         self.columns = columns
+    
+    def __repr__(self):
+        return 'SelectColumns(' + str(self.columns) +')'
 
     def fit(self, X, y = None):
         return self
@@ -20,9 +23,12 @@ class SelectColumns(BaseEstimator, TransformerMixin):
         return self.fit(X,y).transform(X)
     
 
-class FillNaCommon(BaseEstimator, TransformerMixin):
+class FillNaMode(BaseEstimator, TransformerMixin):
     def __init__(self, columns = None):
         self.columns = columns
+    
+    def __repr__(self):
+        return 'FillNaMode(' +  str(self.columns) +')'
 
     def fit(self, X, y = None):
         return self
@@ -41,6 +47,9 @@ class FillNaWithConst(BaseEstimator, TransformerMixin):
     def __init__(self, const, columns = None):
         self.const = const
         self.columns = columns
+    
+    def __repr__(self):
+        return 'FillNaWithConst(' +  str(self.columns) + ',' + self.const+ ')'
 
     def fit(self, X, y = None):
         return self
@@ -58,6 +67,9 @@ class ProcessCategoriesAsIndex(BaseEstimator, TransformerMixin):
     def __init__(self, columns = None):
         self.columns = columns
         self.columns_categories = {}
+        
+    def __repr__(self):
+        return 'ProcessCategoriesAsIndex(' + str(self.columns) + ')'
 
     def fit(self, X, y = None):
         for col in self.columns:
@@ -80,6 +92,9 @@ class ProcessCategoriesOHE(BaseEstimator, TransformerMixin):
     def __init__(self, columns = None):
         self.columns = columns
         self.columns_categories = {}
+        
+    def __repr__(self):
+        return 'ProcessCategoriesOHE(' + str(self.columns) + ')'
 
     def fit(self, X, y = None):
         for col in self.columns:
@@ -101,6 +116,9 @@ class ProcessCategoriesOHE(BaseEstimator, TransformerMixin):
 class ProcessBins(BaseEstimator, TransformerMixin):
     def __init__(self, columns_bins = None):
         self.columns_bins = columns_bins
+        
+    def __repr__(self):
+        return 'ProcessBins(' + str(self.columns_bins.keys()) + ')'
 
     def fit(self, X, y = None):
         return self

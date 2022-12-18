@@ -27,7 +27,7 @@ from sklearn.pipeline import Pipeline
 import mlflow
 from mlflow.tracking import MlflowClient
 
-from CustomTransformers import (SelectColumns, FillNaCommon, FillNaWithConst, ProcessCategoriesAsIndex, 
+from CustomTransformers import (SelectColumns, FillNaMode, FillNaWithConst, ProcessCategoriesAsIndex, 
                                 ProcessCategoriesOHE, ProcessBins)
 
 ```
@@ -84,8 +84,8 @@ columns_for_bins = {'Age':{
 ```python
 preprocessing_steps = [
     ('drop_columns', SelectColumns(columns_to_use)),
-    ('process_na_category', FillNaCommon(columns_with_na_category)),
-    ('process_na_numeric', FillNaCommon(columns_with_na_numeric)),
+    ('process_na_category', FillNaMode(columns_with_na_category)),
+    ('process_na_numeric', FillNaMode(columns_with_na_numeric)),
     ('process_categories', ProcessCategoriesOHE(category_columns)),
     ('process_bins', ProcessBins(columns_for_bins))
          ]
@@ -133,7 +133,7 @@ max_features = list(range(2, X.shape[1]+1, 2))
 
 ```python
 param_grid = dict(
-    process_na_category = [FillNaCommon(columns_with_na_category), 
+    process_na_category = [FillNaMode(columns_with_na_category), 
                            FillNaWithConst('Na', columns_with_na_category)],
     process_categories = [ProcessCategoriesAsIndex(category_columns), 
                           ProcessCategoriesOHE(category_columns)],
@@ -151,7 +151,7 @@ grid_search = RandomizedSearchCV(pipeline, param_distributions=param_grid, n_job
 ```python
 EXPERIMENT_NAME = 'mlflow-decisiontree_custom_pipeline'
 EXPERIMENT_ID = mlflow.set_experiment(EXPERIMENT_NAME).name
-mlflow.sklearn.autolog(log_models=False, silent=True, max_tuning_runs=500)
+mlflow.sklearn.autolog(log_models=False, silent=True, max_tuning_runs=200)
 with mlflow.start_run() as run:
     grid_search.fit(X, Y)
 ```
