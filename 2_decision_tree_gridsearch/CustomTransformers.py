@@ -1,10 +1,8 @@
 import pandas as pd
 import numpy as np
 from sklearn.base import BaseEstimator, TransformerMixin
-import unittest
+from category_encoders import TargetEncoder
 
-from pandas.api.types import is_string_dtype
-from pandas.api.types import is_numeric_dtype
 
 class SelectColumns(BaseEstimator, TransformerMixin):
     def __init__(self, columns = None):
@@ -17,7 +15,7 @@ class SelectColumns(BaseEstimator, TransformerMixin):
         return self
     
     def transform(self, X):
-        return X.copy() if self.columns is None else X[self.columns]
+        return X.copy() if self.columns is None else X[self.columns].copy()
     
     def fit_transform(self,X,y=None):
         return self.fit(X,y).transform(X)
@@ -36,7 +34,8 @@ class FillNaMode(BaseEstimator, TransformerMixin):
     def transform(self, X):
         data = X.copy()
         for col in self.columns:
-            data[col].fillna(data[col].mode()[0], inplace=True)
+            if col in X.columns:
+                data[col].fillna(data[col].mode()[0], inplace=True)
         return data
     
     def fit_transform(self,X,y=None):
@@ -57,7 +56,8 @@ class FillNaWithConst(BaseEstimator, TransformerMixin):
     def transform(self, X):
         data = X.copy()
         for col in self.columns:
-            data[col] = data[col].fillna(self.const)
+            if col in X.columns:
+                data[col] = data[col].fillna(self.const)
         return data
         
     def fit_transform(self,X,y=None):
@@ -73,15 +73,17 @@ class ProcessCategoriesAsIndex(BaseEstimator, TransformerMixin):
 
     def fit(self, X, y = None):
         for col in self.columns:
-            self.columns_categories.update({col:X[col].unique()})
+            if col in X.columns:
+                self.columns_categories.update({col:X[col].unique()})
         return self
             
     def transform(self, X):   
         data = X.copy()
         for col in self.columns:
-            values = self.columns_categories[col]
-            map_values = dict(zip(values, np.arange(len(values))))
-            data[col] = data[col].map(map_values)
+            if col in data.columns:
+                values = self.columns_categories[col]
+                map_values = dict(zip(values, np.arange(len(values))))
+                data[col] = data[col].map(map_values)
         return data
     
     def fit_transform(self,X,y=None):
@@ -98,14 +100,18 @@ class ProcessCategoriesOHE(BaseEstimator, TransformerMixin):
 
     def fit(self, X, y = None):
         for col in self.columns:
-            self.columns_categories.update({col:X[col].unique()})
+            if col in X.columns:
+                self.columns_categories.update({col:X[col].unique()})
         return self
             
     def transform(self, X): 
         data = X.copy()
+        present_columns = []
         for col in self.columns:
-            data[col] = data[col].astype(pd.CategoricalDtype(categories=self.columns_categories[col]))
-        data = pd.get_dummies(data, columns=self.columns, dummy_na=False)
+            if col in data.columns:
+                present_columns.append(col)
+                data[col] = data[col].astype(pd.CategoricalDtype(categories=self.columns_categories[col]))
+        data = pd.get_dummies(data, columns=present_columns, dummy_na=False)
         
         return data
     
@@ -129,6 +135,65 @@ class ProcessBins(BaseEstimator, TransformerMixin):
             for column, bins in self.columns_bins.items():
                  data[column] = pd.cut(data[column], bins=bins['bins'], labels=bins['labels'])
             data = pd.get_dummies(data, columns=self.columns_bins.keys())
+        return data
+    
+    def fit_transform(self,X,y=None):
+        return self.fit(X,y).transform(X)
+
+    
+class Pass(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        pass
+    
+    def __repr__(self):
+        return 'Pass'
+
+    def fit(self, X, y = None):
+        return self
+    
+    def transform(self, X):
+        return X
+    
+    def fit_transform(self,X,y = None):
+        return self.fit(X,y).transform(X)
+    
+
+class DropColumns(BaseEstimator, TransformerMixin):
+    def __init__(self, columns = None):
+        self.columns = columns
+    
+    def __repr__(self):
+        return 'DropColumns(' + str(self.columns) +')'
+
+    def fit(self, X, y = None):
+        return self
+    
+    def transform(self, X):
+        return X.copy().drop(columns=self.columns)
+    
+    def fit_transform(self,X,y=None):
+        return self.fit(X,y).transform(X)
+    
+    
+class ProcessTargetEncoding(BaseEstimator, TransformerMixin):
+    def __init__(self, target_column, columns = None,):
+        self.columns = columns
+        self.target_column = target_column
+        self.encoder = TargetEncoder()
+    
+    def __repr__(self):
+        return 'TargetEncoding(' + str(self.columns) +')'
+
+    def fit(self, X, y = None):
+        return self
+    
+    def transform(self, X):
+        data = X.copy()
+        for col in self.columns:
+            if col in X.columns:
+                col_name = col+'_encoded'
+                data[col_name] = self.encoder.fit_transform(data[col], data[self.target_column])
+                data = data.drop(columns=col)
         return data
     
     def fit_transform(self,X,y=None):
