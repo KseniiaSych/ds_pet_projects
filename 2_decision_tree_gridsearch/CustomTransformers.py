@@ -69,21 +69,28 @@ class ProcessCategoriesAsIndex(BaseEstimator, TransformerMixin):
         self.columns_categories = {}
         
     def __repr__(self):
-        return 'ProcessCategoriesAsIndex(' + str(self.columns) + ')'
+        return 'CategoriesAsIndex'
 
     def fit(self, X, y = None):
         for col in self.columns:
             if col in X.columns:
-                self.columns_categories.update({col:X[col].unique()})
+                unique_values = X[col].unique()
+                col_mapping =  dict(zip(unique_values, np.arange(len(unique_values))))
+                self.columns_categories.update({col:col_mapping})
         return self
             
+    def map_values(self, s, m):
+        if s not in m.keys():
+            #add missing value with next index
+            m[s] = len(m.keys())
+        return m[s]
+                            
     def transform(self, X):   
         data = X.copy()
         for col in self.columns:
             if col in data.columns:
-                values = self.columns_categories[col]
-                map_values = dict(zip(values, np.arange(len(values))))
-                data[col] = data[col].map(map_values)
+                mapping = self.columns_categories[col]
+                data[col] = data[col].apply(lambda s: self.map_values(s,mapping))
         return data
     
     def fit_transform(self,X,y=None):
@@ -96,7 +103,7 @@ class ProcessCategoriesOHE(BaseEstimator, TransformerMixin):
         self.columns_categories = {}
         
     def __repr__(self):
-        return 'ProcessCategoriesOHE(' + str(self.columns) + ')'
+        return 'CategoriesOHE'
 
     def fit(self, X, y = None):
         for col in self.columns:
@@ -124,7 +131,7 @@ class ProcessBins(BaseEstimator, TransformerMixin):
         self.columns_bins = columns_bins
         
     def __repr__(self):
-        return 'ProcessBins(' + str(self.columns_bins.keys()) + ')'
+        return 'ProcessBins'
 
     def fit(self, X, y = None):
         return self
@@ -176,24 +183,35 @@ class DropColumns(BaseEstimator, TransformerMixin):
     
     
 class ProcessTargetEncoding(BaseEstimator, TransformerMixin):
-    def __init__(self, target_column, columns = None,):
+    def __init__(self, encoders_map, columns = None):
         self.columns = columns
-        self.target_column = target_column
-        self.encoder = TargetEncoder()
+        self.encoders_map = encoders_map
+        if not all(col in encoders_map for col in columns):
+            raise Excpetion("Encoder for colum not found")
     
     def __repr__(self):
-        return 'TargetEncoding(' + str(self.columns) +')'
+        return 'TargetEncoding'
 
     def fit(self, X, y = None):
         return self
     
+    @staticmethod
+    def fit_encoder(X, y, columns):
+        encoders = {}
+        for col in columns:
+            new_encoder = TargetEncoder()
+            new_encoder.fit(X[col],y)
+            encoders.update({col:new_encoder})
+        return encoders
+    
     def transform(self, X):
+        if not self.columns:
+            return X
         data = X.copy()
         for col in self.columns:
             if col in X.columns:
-                col_name = col+'_encoded'
-                data[col_name] = self.encoder.fit_transform(data[col], data[self.target_column])
-                data = data.drop(columns=col)
+                encoder = self.encoders_map[col]
+                data[col] = encoder.transform(data[col])
         return data
     
     def fit_transform(self,X,y=None):

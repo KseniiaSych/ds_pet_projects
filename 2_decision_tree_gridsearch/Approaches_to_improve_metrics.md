@@ -46,10 +46,6 @@ titanic_dataset.head()
 ```python
 def exctract_target(df, tagetName='Survived'):
     target = df[tagetName].copy().to_numpy()
-    return df, target
-
-def devide_features_target(df, tagetName='Survived'):
-    target = df[tagetName].copy().to_numpy()
     features = df.drop(tagetName, axis=1)
     return features, target
 
@@ -74,15 +70,15 @@ train_balanced = balance_undersample(train)
 train_copy = remove_over_95th(train_balanced, columns=['Age', 'Fare'])
 
 X,Y = exctract_target(train_copy)
-x_test, y_test = devide_features_target(test)
+x_test, y_test = exctract_target(test)
 ```
 
 ```python
 target_name = 'Survived'
-columns_to_drop = ['PassengerId', 'Name', 'Ticket', 'Cabin', 'Survived']
 columns_with_na_category = ['Embarked', 'Title']
-columns_with_na_numeric = ['Age', 'Fare']
+columns_with_na_numeric = ['Age']
 category_columns = ['Embarked', 'Sex', 'Deck', 'Title']
+columns_to_drop = ['PassengerId', 'Name', 'Ticket', 'Cabin']
 
 fare_bins = [0, 20, 80, 140, 160, 180, 220,260,500]
 columns_for_bins = {'Age':{
@@ -96,6 +92,12 @@ columns_for_bins = {'Age':{
 ```
 
 ```python
+x_title = ExctractTitle().fit_transform(X)
+x_for_target_encoding = ExctractDeck().fit_transform(x_title)
+target_encoders = ProcessTargetEncoding.fit_encoder(x_for_target_encoding, Y, category_columns)
+```
+
+```python
 preprocessing_steps = [
    ('add_feature_title', ExctractTitle()),
     ('add_feature_deck', ExctractDeck()),
@@ -103,7 +105,7 @@ preprocessing_steps = [
     ('add_feature_is_alone', FeatureIsAlone()),
     ('process_na_category', FillNaMode(columns_with_na_category)),
     ('process_na_numeric', FillNaMode(columns_with_na_numeric)),
-    ('process_categories', ProcessTargetEncoding(target_name, category_columns)),
+    ('process_categories',  ProcessTargetEncoding(target_encoders, category_columns)),
     ('process_bins', ProcessBins(columns_for_bins)),
     ('drop_columns', DropColumns(columns_to_drop)),
          ]
@@ -135,17 +137,7 @@ pipeline
 ```
 
 ```python
-'''max_depth = list(range(2, 15, 2))
-max_depth.append(None)
-
-max_features = list(range(2, X.shape[1]+1, 2))
-num_estimators=5
-
-clf__criterion = ['gini', 'entropy', 'log_loss'],
-    clf__max_depth = max_depth,
-    clf__max_features = max_features,
-    clf__random_state = [42],
-    clf__splitter = ['best', 'random']'''
+#num_estimators=[50, 100]
 ```
 
 ```python
@@ -158,16 +150,26 @@ param_grid = dict(
                            FillNaWithConst('Na', columns_with_na_category)],
     process_categories = [ProcessCategoriesAsIndex(category_columns), 
                           ProcessCategoriesOHE(category_columns), 
-                          ProcessTargetEncoding(category_columns)
+                          ProcessTargetEncoding(target_encoders, category_columns),
                          ],
     process_bins = [ProcessBins(columns_for_bins), Pass()],
     
+    clf__n_estimators = [100],
+    clf__criterion = ['gini'],
+    clf__max_depth = [4],
+    clf__random_state = [42],
+    clf__max_leaf_nodes = [None],
+    clf__min_samples_leaf = [1],
+    clf__min_samples_split = [2],
 )
 grid_search = GridSearchCV(pipeline, param_grid, n_jobs=-1)
 
 ```
 
 ```python
+import warnings
+warnings.simplefilter(action='ignore', category=FutureWarning)
+
 EXPERIMENT_NAME = 'mlflow-randomtree_pipeline'
 EXPERIMENT_ID = mlflow.set_experiment(EXPERIMENT_NAME).name
 mlflow.sklearn.autolog(log_models=False, silent=True, max_tuning_runs=200)

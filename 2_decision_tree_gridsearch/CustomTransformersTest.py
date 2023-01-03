@@ -162,7 +162,7 @@ class TestDropColumns(unittest.TestCase):
         self.assertFalse('SibSp' in processed_data.columns, "Should drop column")
 
     def test_transform_empty(self):
-        sib = [1, None]
+        sib = [1, 5]
         parch = [3, 0]
         test_df = pd.DataFrame(list(zip(sib, parch)), columns =['SibSp', 'Parch'])
 
@@ -176,12 +176,15 @@ class TestProcessTargetEncoding(unittest.TestCase):
 
     def test_transform(self):
         test_df = pd.util.testing.makeMixedDataFrame()
-        column = 'C'
+        columns = ['C']
+        target_column = 'B'
         
-        transformer = ProcessTargetEncoding([column])
-        pr_d = transformer.fit_transform(test_df, test_df.B)
+        encoders = ProcessTargetEncoding.fit_encoder(test_df, test_df[target_column], columns)
         
-        self.assertTrue(is_numeric_dtype(pr_d['C_encoded']), "Should transform {} to numeric ".format(column))
+        transformer = ProcessTargetEncoding(encoders, columns)
+        pr_d = transformer.fit_transform(test_df)
+        
+        self.assertTrue(is_numeric_dtype(pr_d['C']), "Should transform {} to numeric ".format(columns))
         
         
 if __name__ == '__main__':

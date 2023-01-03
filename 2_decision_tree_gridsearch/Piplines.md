@@ -151,7 +151,7 @@ grid_search = RandomizedSearchCV(pipeline, param_distributions=param_grid, n_job
 ```python
 EXPERIMENT_NAME = 'mlflow-decisiontree_custom_pipeline'
 EXPERIMENT_ID = mlflow.set_experiment(EXPERIMENT_NAME).name
-mlflow.sklearn.autolog(log_models=False, silent=True, max_tuning_runs=200)
+mlflow.sklearn.autolog(log_models=True, silent=True, max_tuning_runs=200)
 with mlflow.start_run() as run:
     grid_search.fit(X, Y)
 ```
