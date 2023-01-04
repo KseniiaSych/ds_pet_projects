@@ -5,8 +5,8 @@ from pandas.api.types import is_string_dtype
 from pandas.api.types import is_numeric_dtype
 from pandas.util.testing import assert_frame_equal
 
-from CustomTransformers import (SelectColumns, FillNaCommon, FillNaWithConst, ProcessCategoriesAsIndex, 
-                                ProcessCategoriesOHE, ProcessBins)
+from CustomTransformers import (SelectColumns, FillNaMode, FillNaWithConst, ProcessCategoriesAsIndex, 
+                                ProcessCategoriesOHE, ProcessBins, Pass, DropColumns, ProcessTargetEncoding)
 
 
 class TestSelectColumns(unittest.TestCase):
@@ -23,7 +23,7 @@ class TestSelectColumns(unittest.TestCase):
         self.assertListEqual(list(test_df.columns), baseline, "Should not change input")
 
         
-class TestFillNaCommon(unittest.TestCase):
+class TestFillNaMode(unittest.TestCase):
 
     def test_transform(self):
         test_df = pd.util.testing.makeMixedDataFrame()
@@ -32,7 +32,7 @@ class TestFillNaCommon(unittest.TestCase):
         
         test_df.loc[test_df['A'] == 0, 'A'] = None
         
-        transformer = FillNaCommon([column])
+        transformer = FillNaMode([column])
         processed_data = transformer.fit_transform(test_df)
         
         self.assertEqual(processed_data[column].isna().sum(), 0, "Should fill Na s")
@@ -48,7 +48,7 @@ class TestFillNaCommon(unittest.TestCase):
         
         replacement = test_df[column].mode()
         
-        transformer = FillNaCommon([column])
+        transformer = FillNaMode([column])
         processed_data = transformer.fit_transform(test_df)
         
         self.assertEqual(processed_data[column].isna().sum(), 0, "Should fill Na s")
@@ -136,6 +136,55 @@ class TestProcessBins(unittest.TestCase):
         processed_data = transformer.fit_transform(test_df)
         
         assert_frame_equal(processed_data, test_df, "Should not transform with empty columns")
+
+        
+class TestPass(unittest.TestCase):
+
+    def test_transform(self):
+        test_df = pd.util.testing.makeMixedDataFrame()
+
+        transformer = Pass()
+        processed_data = transformer.fit_transform(test_df)
+
+        assert_frame_equal(processed_data, test_df, "Should not change data")
+        
+        
+class TestDropColumns(unittest.TestCase):
+
+    def test_transform(self):
+        sib = [1, None]
+        parch = [3, 0]
+        test_df = pd.DataFrame(list(zip(sib, parch)), columns =['SibSp', 'Parch'])
+
+        transformer = DropColumns(['SibSp'])
+        processed_data = transformer.fit_transform(test_df)
+        
+        self.assertFalse('SibSp' in processed_data.columns, "Should drop column")
+
+    def test_transform_empty(self):
+        sib = [1, 5]
+        parch = [3, 0]
+        test_df = pd.DataFrame(list(zip(sib, parch)), columns =['SibSp', 'Parch'])
+
+        transformer = DropColumns([])
+        processed_data = transformer.fit_transform(test_df)
+        
+        assert_frame_equal(processed_data, test_df, "Should not change data")
+        
+        
+class TestProcessTargetEncoding(unittest.TestCase):
+
+    def test_transform(self):
+        test_df = pd.util.testing.makeMixedDataFrame()
+        columns = ['C']
+        target_column = 'B'
+        
+        encoders = ProcessTargetEncoding.fit_encoder(test_df, test_df[target_column], columns)
+        
+        transformer = ProcessTargetEncoding(encoders, columns)
+        pr_d = transformer.fit_transform(test_df)
+        
+        self.assertTrue(is_numeric_dtype(pr_d['C']), "Should transform {} to numeric ".format(columns))
         
         
 if __name__ == '__main__':
