@@ -69,7 +69,7 @@ class ProcessCategoriesAsIndex(BaseEstimator, TransformerMixin):
         self.columns_categories = {}
         
     def __repr__(self):
-        return 'CategoriesAsIndex'
+        return 'IndexCategory'
 
     def fit(self, X, y = None):
         for col in self.columns:
@@ -103,7 +103,7 @@ class ProcessCategoriesOHE(BaseEstimator, TransformerMixin):
         self.columns_categories = {}
         
     def __repr__(self):
-        return 'CategoriesOHE'
+        return 'OHECategories'
 
     def fit(self, X, y = None):
         for col in self.columns:

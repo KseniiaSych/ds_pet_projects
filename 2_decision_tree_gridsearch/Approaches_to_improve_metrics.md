@@ -127,17 +127,15 @@ res.head()
 ```python
 steps = [
     *preprocessing_steps,
-    ('clf', RandomForestClassifier(n_estimators=5, random_state=0))
+    ('clf', RandomForestClassifier(n_estimators=100, random_state=42, criterion = 'gini', 
+                                   max_depth = 4,  max_leaf_nodes =None, min_samples_leaf = 1,
+                                  min_samples_split = 2))
 ]
 pipeline = Pipeline(steps)
 ```
 
 ```python
 pipeline
-```
-
-```python
-#num_estimators=[50, 100]
 ```
 
 ```python
@@ -153,14 +151,6 @@ param_grid = dict(
                           ProcessTargetEncoding(target_encoders, category_columns),
                          ],
     process_bins = [ProcessBins(columns_for_bins), Pass()],
-    
-    clf__n_estimators = [100],
-    clf__criterion = ['gini'],
-    clf__max_depth = [4],
-    clf__random_state = [42],
-    clf__max_leaf_nodes = [None],
-    clf__min_samples_leaf = [1],
-    clf__min_samples_split = [2],
 )
 grid_search = GridSearchCV(pipeline, param_grid, n_jobs=-1)
 
@@ -194,8 +184,4 @@ print("Accuracy Score: ", accuracy_score(y_test, y_pred))
 print("F1 Score: ", f1_score(y_test, y_pred, average='weighted'))
 print("Precision Score: ", precision_score(y_test, y_pred, average='weighted'))
 print("Recall Score: ", recall_score(y_test, y_pred, average='weighted'))
-```
-
-```python
-
 ```
