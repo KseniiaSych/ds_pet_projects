@@ -75,7 +75,6 @@ x_test, y_test = exctract_target(test)
 ```
 
 ```python
-target_name = 'Survived'
 columns_with_na_category = ['Embarked', 'Title']
 columns_with_na_numeric = ['Age']
 category_columns = ['Embarked', 'Sex', 'Deck', 'Title']
