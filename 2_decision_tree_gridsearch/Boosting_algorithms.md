@@ -27,7 +27,7 @@ from sklearn.pipeline import Pipeline
 import mlflow
 from mlflow.tracking import MlflowClient
 
-import xgboost as xgb
+from xgboost import XGBClassifier
 import warnings
 
 from CustomTransformers import (FillNaMode, DropColumns, ProcessTargetEncoding)
@@ -221,4 +221,17 @@ print_scores(y_test, y_pred_grad)
 
 ```python
 xgd_clf = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
+```
+
+```python
+xgd_clf.fit(X_preprocessed, Y)
+```
+
+```python
+y_pred_xgb = xgd_clf.predict(x_test_processed)
+print_scores(y_test, y_pred_xgb)
+```
+
+```python
+
 ```
