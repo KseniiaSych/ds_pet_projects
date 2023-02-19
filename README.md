@@ -10,6 +10,6 @@ Use gridsearch to estimate better values for hyperparameters. Use mlflow to log 
 
 3. Analysis of time series \
 <span style="color:#808080">Data: https://www.kaggle.com/datasets/chirag19/air-passengers</span> \ \
-Use statistical models to predict future value based on time series data.
+Use statistical models to predict future value based on time series data. Explore stationarity, compare models.
 
 
