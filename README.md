@@ -6,6 +6,7 @@ Projects are following:
 Data: https://www.kaggle.com/competitions/titanic/data
 ```
 Expolre and preprocess dataset, implement decision tree model with metrics
+
 ## 2. Gridsearch for decition tree with titanic dataset 
 ```diff
 Data: https://www.kaggle.com/competitions/titanic/data
@@ -18,4 +19,6 @@ Data: https://www.kaggle.com/datasets/chirag19/air-passengers
 ```
 Use statistical models to predict future value based on time series data. Explore stationarity, compare models.
 
+## 4. Comparison of experiment group with control group
+Expolre and preprocess dataset, 
 
