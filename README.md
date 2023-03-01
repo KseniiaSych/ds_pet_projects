@@ -20,5 +20,6 @@ Data: https://www.kaggle.com/datasets/chirag19/air-passengers
 Use statistical models to predict future value based on time series data. Explore stationarity, compare models.
 
 ## 4. Comparison of experiment group with control group
-Expolre and preprocess dataset, 
+
+Expolre and preprocess dataset, compare research and control groups by different parameters, visually and check statistical significancy on the difference. 
 

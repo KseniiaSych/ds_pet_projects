@@ -288,6 +288,8 @@ print_mean_diff(df_sum_r.SUM2_DIFF, df_sum_c.SUM2_DIFF, "difference of SUM measu
 print_mean_diff(df_sum_r.SUM7_DIFF, df_sum_c.SUM7_DIFF, "difference of SUM measurements 7 week")
 ```
 
-```python
+# Cluster people and compare
 
+```python
+#TBD
 ```
