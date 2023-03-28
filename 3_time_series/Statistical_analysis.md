@@ -26,9 +26,12 @@ from statsmodels.tsa.arima.model import ARIMA
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.graphics.tsaplots import plot_acf, plot_pacf
 from statsmodels.tsa.stattools import adfuller
+from statsmodels.tsa.api import ExponentialSmoothing
 from time import time
+from dateutil.relativedelta import relativedelta
 import math
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.linear_model import LinearRegression
 
 from scalecast.Forecaster import Forecaster
 from scalecast.auxmodels import auto_arima
@@ -68,6 +71,7 @@ print("Amount of measurements:", df["Num_Passengers"].count())
 plt.title("Amount of air passagers by month")
 sns.lineplot(x="Month", y="Num_Passengers",
              data=df)
+plt.show()
 ```
 
 <!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
@@ -114,7 +118,7 @@ acf_plot = plot_acf(df.Num_Passengers, lags=20)
 ```
 
 ```python
-pacf_plot = plot_pacf(df.Num_Passengers)
+pacf_plot = plot_pacf(df.Num_Passengers, method='ywm')
 ```
 
 <!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
@@ -134,9 +138,9 @@ def adf_test(timeseries):
             "Number of Observations Used",
         ],
     )
-    for key, value in dftest[4].items():
-        dfoutput["Critical Value (%s)" % key] = value
     print(dfoutput)
+    is_not = 'is' if dfoutput[1]<0.05 else 'is not'
+    print(f"Time series {is_not} stationary")
 ```
 
 ```python
@@ -151,48 +155,53 @@ df.rolling(window = 12).mean().plot(figsize=(8,4), color="tab:red", title="Rolli
 df.rolling(window = 12).var().plot(figsize=(8,4), color="tab:red", title="Rolling Variance over 12 month period");
 ```
 
-## Normalize
-
-```python
-avg, dev = df.mean(), df.std()
-```
-
-```python
-normalized_df = (df - avg) / dev
-```
-
-```python
-plt.title("Normalized data")
-sns.set(rc={'figure.figsize':(20, 4)})
-sns.lineplot(x="Month", y="Num_Passengers",
-             data=normalized_df)
-```
-
+<!-- #region tags=[] -->
 ## Remove trend
+<!-- #endregion -->
 
 ```python
-first_dif = normalized_df.diff()[1:]
+first_dif = df.diff()[1:]
 ```
 
 ```python
+plt.figure(figsize=(9,3))
 plt.title("First Difference")
 sns.lineplot(x="Month", y="Num_Passengers", data=first_dif, )
+plt.show()
 ```
 
 ```python
 adf_test(first_dif)
 ```
 
+### Second option
+
+```python
+y_detrend = ((df - df.rolling(window=12).mean())/df.rolling(window=12).std())[11:]
+plt.figure(figsize=(9,3))
+plt.title("Detrend")
+sns.lineplot(x="Month", y="Num_Passengers", data=y_detrend, )
+plt.show()
+```
+
+```python
+adf_test(y_detrend)
+```
+
+<!-- #region tags=[] -->
 ## Remove Seasonality
+<!-- #endregion -->
 
 ```python
 yearly_dif = first_dif.diff(12)[12:]
 ```
 
 ```python
+plt.figure(figsize=(9,3))
 plt.title("Yearly Difference")
 sns.lineplot(x="Month", y="Num_Passengers",
              data=yearly_dif)
+plt.show()
 ```
 
 ```python
@@ -209,7 +218,7 @@ acf_plot = plot_acf(yearly_dif.Num_Passengers, lags=100)
 ```
 
 ```python
-pacf_plot = plot_pacf(yearly_dif.Num_Passengers)
+pacf_plot = plot_pacf(yearly_dif.Num_Passengers, method='ywm')
 ```
 
 # Comparing different models
@@ -222,9 +231,72 @@ pacf_plot = plot_pacf(yearly_dif.Num_Passengers)
 preprocessed_df = yearly_dif
 ```
 
+```python
+processing_list = [df, first_dif, yearly_dif]
+preprocessing_data = pd.concat(processing_list, axis=1, keys= ['Origin', 'Fist_processed', 'Finall_processed'])
+```
+
+```python
+preprocessing_data.head()
+```
+
 <!-- #region tags=[] -->
 ### Rolling forecast utility functions
 <!-- #endregion -->
+
+```python
+def predict_previous_value(dataframe, split):
+    return dataframe[split + relativedelta(months=-1): ][:-1].shift(1, freq='M')
+```
+
+```python
+def exponentialSmoothing(dataframe, split, verbose=False):
+    model_fit = []
+    predictions =  []
+    for i, cur_date in enumerate(pd.date_range(split,  dataframe.index[-1], freq='MS')):
+        if(verbose): print(i, " iteration")
+        model = ExponentialSmoothing(dataframe[:cur_date - timedelta(days=1)], seasonal_periods = 12, trend='add', seasonal='add')
+        fit = model.fit()
+        pred = fit.predict(start=cur_date, end=cur_date) 
+        
+        model_fit.append(fit)
+        predictions.append(pred)
+    
+    predictions_df = pd.DataFrame(pd.concat(predictions, axis=0), columns=['Num_Passengers'])
+    return model_fit, predictions_df
+```
+
+```python
+def linear_regression_with_season(x, y):
+    if len(x)<12:
+        raise ValueError("This prediction require more then year of test data")
+    model = LinearRegression()
+    fit = model.fit(x, y)
+    lin_pred = fit.predict([y[-1,:]+1])
+    
+    pred = lin_pred[0][0] + (x[-12][0] - fit.predict([y[-12,:]])[0][0])
+    return fit, pred
+```
+
+```python
+def fit_linear_regression_with_season(dataframe, split, verbose=False):
+    model_fit = []
+    predictions =  []
+    prediction_range = pd.date_range(split,  dataframe.index[-1], freq='MS')
+    for i, cur_date in enumerate(prediction_range):
+        if(verbose): print(i, " iteration")
+        data = dataframe[:cur_date - timedelta(days=1)]['Num_Passengers'].values.reshape(-1, 1)
+        index = np.arange(len(data)).reshape(-1, 1)
+        fit, pred = linear_regression_with_season(data, index)
+        
+        model_fit.append(fit)
+        predictions.append(pred)
+    predictions_df = pd.DataFrame({'Month': prediction_range,
+                   'Num_Passengers': predictions})
+    predictions_df = predictions_df.set_index('Month')
+    
+    return model_fit, predictions_df
+```
 
 ```python
 def fit_model_arima(order, dataframe, split, method=None, verbose=False):
@@ -271,20 +343,138 @@ def get_split_date(data, split_coef):
     return data.index[split]
 ```
 
+```python
+def split_train_test(df_to_split, train_percents):
+    split_date = get_split_date(df_to_split, train_percents)
+
+    train_data = df_to_split[:split_date - timedelta(days=1)]
+    test_data = df_to_split[split_date:]
+    return train_data, test_data, split_date
+```
+
+```python
+def split_train_test_by_date(df_to_split, split_date):
+    train_data = df_to_split[:split_date - timedelta(days=1)]
+    test_data = df_to_split[split_date:]
+    return train_data, test_data
+```
+
+```python
+def get_metrics_for_df(test_data, predictions, col='Num_Passengers'):
+    return get_metrics(test_data[col], predictions[col])
+```
+
+```python
+def get_metrics(test_data, predictions):
+    mse = mean_squared_error(test_data, predictions)  
+    rmse = mean_squared_error(test_data, predictions, squared=False)          
+    mae = mean_absolute_error(test_data, predictions)
+    return mse, rmse, mae
+```
+
+```python
+def print_metrics(mse, rmse, mae):
+    print("MSE - ", mse)
+    print("RMSE - ", rmse)
+    print("MAE - ", mae)
+```
+
+```python
+def plot_test_with_predictions(test, pred, name):
+    plt.figure(figsize=(8,4))
+
+    plt.plot(test)
+    plt.plot(pred)
+    plt.title(name)
+    plt.legend(('Data', 'Predictions'), fontsize=16)
+    plt.show()
+```
+
+```python
+def inverse_diffirence(observation, diffs, periods):
+    restored = observation.copy()
+    restored.iloc[periods+1:] = np.nan
+    for d, val in diffs.iterrows():
+        restored.loc[d] = restored.loc[d - pd.DateOffset(months=periods)] + val
+    return restored.iloc[periods:]
+```
+
+```python
+def restore_data(origin, processed_prev,  diffs):
+    fd =  inverse_diffirence(processed_prev.iloc[-12:,:], diffs, 12)
+    restored = inverse_diffirence(origin.iloc[-1:,:], fd, 1)
+    return restored
+```
+
+```python
+def restore_prediction(proc_flow, predictions, split_date):
+    train_o, _ = split_train_test_by_date(proc_flow['Origin'], split_date)
+    train_f, _ = split_train_test_by_date(proc_flow['Fist_processed'], split_date)
+    return restore_data(train_o, train_f, predictions)
+```
+
+```python
+def restore_test(proc_flow, test):
+    index = test.index.values
+    return proc_flow['Origin'].loc[index]
+```
+
+```python
+def get_metrics_from_restored(proc_flow, test_data, predictions, split_date):
+    restored_pred = restore_prediction(proc_flow, predictions, split_date)
+    restored_test = restore_test(proc_flow, test_data)
+    return get_metrics(restored_test, restored_pred)
+```
+
+<!-- #region tags=[] -->
+## Baseline
+<!-- #endregion -->
+
+<!-- #region tags=[] -->
+### Predict previous value
+<!-- #endregion -->
+
+```python
+_, b_test_data, split_date = split_train_test(df, 0.70)
+b_predictons = predict_previous_value(df, split_date)
+plot_test_with_predictions(b_test_data, b_predictons, "Prediction is last known value")
+
+b_mse, b_rmse, b_mae = get_metrics(b_test_data.values, b_predictons)
+print_metrics(b_mse, b_rmse, b_mae)
+```
+
+<!-- #region tags=[] -->
+### Linear regression with seasonal residual
+<!-- #endregion -->
+
+```python
+_, lr_test_data, lr_split_date = split_train_test(df, 0.70)
+lr_models, lr_predictons = fit_linear_regression_with_season(df, lr_split_date)
+plot_test_with_predictions(lr_test_data, lr_predictons, "Linear regression with lag residual")
+
+lr_mse, lr_rmse, lr_mae = get_metrics(lr_test_data.values, lr_predictons)
+print_metrics(lr_mse, lr_rmse, lr_mae)
+```
+
+<!-- #region tags=[] -->
+## ExponentialSmoothing
+<!-- #endregion -->
+
+```python
+_, es_test_data, es_split_date = split_train_test(df, 0.70)
+es_models, es_predictons = exponentialSmoothing(df, es_split_date)
+plot_test_with_predictions(es_test_data, es_predictons, "ExponentialSmoothing")
+
+es_mse, es_rmse, es_mae = get_metrics(es_test_data.values, es_predictons)
+print_metrics(es_mse, es_rmse, es_mae)
+```
+
 <!-- #region tags=[] -->
 ## AR model
 <!-- #endregion -->
 
 ```python
-split = get_split_date(preprocessed_df, 0.95)
-
-train_data = preprocessed_df[:split]
-test_data = preprocessed_df[split + timedelta(days=1):]
-```
-
-```python
-pred_start_date = test_data.index[0]
-pred_end_date = test_data.index[-1]
+train_data, test_data, _ = split_train_test(preprocessed_df, 0.95)
 ```
 
 ```python
@@ -297,174 +487,137 @@ print(ar_fit.summary())
 ```
 
 ```python
-predictions = ar_fit.predict(start=pred_start_date, end=pred_end_date)
+predictions = ar_fit.predict(start=test_data.index[0], end=test_data.index[-1])
+plot_test_with_predictions(test_data, predictions, "Predict whole test data with AR model")
+```
+
+### Predict one value then fit model again
+
+```python
+_, ar_test_data, ar_split = split_train_test(preprocessed_df, 0.70)
+ar_models, ar_predictions = fit_model_arima((1,0,0), preprocessed_df, ar_split)
+plot_test_with_predictions(ar_test_data, ar_predictions, "Predict with AR model")
+
+ar_mse_p, ar_rmse_p, ar_mae_p = get_metrics(ar_test_data.values, ar_predictions)
+print_metrics(ar_mse_p, ar_rmse_p, ar_mae_p)
+print("___________________________")
+print("Restored metrics:")
+ar_mse, ar_rmse, ar_mae  = get_metrics_from_restored(preprocessing_data, ar_test_data, ar_predictions, ar_split)
+print_metrics(ar_mse, ar_rmse, ar_mae)
 ```
 
 ```python
-plt.figure(figsize=(10,4))
-
-plt.plot(test_data)
-plt.plot(predictions)
-
-plt.legend(('Data', 'Predictions'), fontsize=16)
+ar_models[-1].summary()
 ```
 
-```python
-ar_split = get_split_date(preprocessed_df, 0.70)
-ar_test_data = preprocessed_df[ar_split:]
-ar_models, ar_predictions = fit_model_arima((2,0,0), preprocessed_df, ar_split)
-```
-
-```python
-plt.figure(figsize=(8,4))
-
-plt.plot(ar_test_data)
-plt.plot(ar_predictions)
-
-plt.legend(('Data', 'Predictions'), fontsize=16)
-```
-
-```python
-ar_mse = mean_squared_error(ar_test_data['Num_Passengers'], ar_predictions['Num_Passengers'])  
-ar_rmse = mean_squared_error(ar_test_data['Num_Passengers'], ar_predictions['Num_Passengers'],
-                                      squared=False)          
-ar_mae = mean_absolute_error(ar_test_data['Num_Passengers'], ar_predictions['Num_Passengers'])
-```
-
-```python
-print("MSE - ", ar_mse)
-print("RMSE - ", ar_rmse)
-print("MAE - ", ar_mae)
-```
-
+<!-- #region tags=[] -->
 ## MA model
+<!-- #endregion -->
 
 ```python
-ma_split = get_split_date(preprocessed_df, 0.70)
-ma_test_data = preprocessed_df[ma_split:]
-ma_models, ma_predictions = fit_model_arima((0,0,2), preprocessed_df, ma_split, 'innovations')
+_, ma_test_data, ma_split = split_train_test(preprocessed_df, 0.70)
+ma_models, ma_predictions = fit_model_arima((0,0,3), preprocessed_df, ma_split)
+plot_test_with_predictions(ma_test_data, ma_predictions, "Predict with MA model")
+
+ma_mse_p, ma_rmse_p, ma_mae_p = get_metrics(ma_test_data.values, ma_predictions)
+print_metrics(ma_mse_p, ma_rmse_p, ma_mae_p)
+
+print("___________________________")
+print("Restored metrics:")
+ma_mse, ma_rmse, ma_mae  = get_metrics_from_restored(preprocessing_data, ma_test_data, ma_predictions, ma_split)
+print_metrics(ma_mse, ma_rmse, ma_mae)
 ```
 
 ```python
-plt.figure(figsize=(8,4))
-
-plt.plot(ma_test_data)
-plt.plot(ma_predictions)
-
-plt.legend(('Data', 'Predictions'), fontsize=16)
+ma_models[-1].summary()
 ```
 
-```python
-ma_mse = mean_squared_error(ma_test_data['Num_Passengers'], ma_predictions['Num_Passengers'])  
-ma_rmse = mean_squared_error(ma_test_data['Num_Passengers'], ma_predictions['Num_Passengers'],
-                                      squared=False)          
-ma_mae = mean_absolute_error(ma_test_data['Num_Passengers'], ma_predictions['Num_Passengers'])
-```
-
-```python
-print("MSE - ", ma_mse)
-print("RMSE - ", ma_rmse)
-print("MAE - ", ma_mae)
-```
-
+<!-- #region tags=[] -->
 ## ARMA model
+<!-- #endregion -->
 
 ```python
-split = get_split_date(preprocessed_df, 0.70)
-test_data_spl = preprocessed_df[split:]
-models, predictions = fit_model_arima((2,0,2), preprocessed_df, split, 'innovations_mle')
+_, arma_test_data, arma_split = split_train_test(preprocessed_df, 0.70)
+arma_models, arma_predictions = fit_model_arima((2,0,2), preprocessed_df, arma_split)
+plot_test_with_predictions(arma_test_data, arma_predictions, "Predict with ARMA model")
+
+arma_mse_p, arma_rmse_p, arma_mae_p = get_metrics(arma_test_data.values, arma_predictions)
+print_metrics(arma_mse_p, arma_rmse_p, arma_mae_p)
+
+print("___________________________")
+print("Restored metrics:")
+arma_mse, arma_rmse, arma_mae  = get_metrics_from_restored(preprocessing_data, arma_test_data, arma_predictions, arma_split)
+print_metrics(arma_mse, arma_rmse, arma_mae)
 ```
 
 ```python
-plt.figure(figsize=(8,4))
-
-plt.plot(test_data_spl)
-plt.plot(predictions)
-
-plt.legend(('Data', 'Predictions'), fontsize=16)
+arma_models[-1].summary()
 ```
 
-```python
-mse = mean_squared_error(test_data_spl['Num_Passengers'], predictions['Num_Passengers'])  
-rmse = mean_squared_error(test_data_spl['Num_Passengers'], predictions['Num_Passengers'],
-                                      squared=False)          
-mae = mean_absolute_error(test_data_spl['Num_Passengers'], predictions['Num_Passengers'])
-```
-
-```python
-print("MSE - ", mse)
-print("RMSE - ", rmse)
-print("MAE - ", mae)
-```
-
+<!-- #region tags=[] -->
 ## ARIMA model
+<!-- #endregion -->
 
 ```python
-df_non_seasonal=df.diff(12)[12:]
+i_train, i_test_data, i_split = split_train_test(df, 0.70)
+i_models, i_predictions = fit_model_arima((4,1,1), df, i_split)
+plot_test_with_predictions(i_test_data, i_predictions, "Predict with ARIMA model")
+i_mse, i_rmse, i_mae = get_metrics(i_test_data.values, i_predictions)
+print_metrics(i_mse, i_rmse, i_mae)
 ```
 
 ```python
-plt.title("Normalized data")
-sns.set(rc={'figure.figsize':(10, 4)})
-sns.lineplot(x="Month", y="Num_Passengers",
-             data=df_non_seasonal)
+i_models[-1].summary()
 ```
 
-```python
-isplit = get_split_date(df_non_seasonal, 0.70)
-itest_data_spl = df_non_seasonal[isplit:]
-imodels, ipredictions = fit_model_arima((2,1,2), df_non_seasonal, isplit, 'statespace')
-```
-
-```python
-plt.figure(figsize=(8,4))
-
-plt.plot(itest_data_spl)
-plt.plot(ipredictions)
-
-plt.legend(('Data', 'Predictions'), fontsize=16)
-```
-
-```python
-imse = mean_squared_error(itest_data_spl['Num_Passengers'], ipredictions['Num_Passengers'])  
-irmse = mean_squared_error(itest_data_spl['Num_Passengers'], ipredictions['Num_Passengers'],
-                                      squared=False)          
-imae = mean_absolute_error(itest_data_spl['Num_Passengers'], ipredictions['Num_Passengers'])
-```
-
-```python
-print("MSE - ", imse)
-print("RMSE - ", irmse)
-print("MAE - ", imae)
-```
-
+<!-- #region tags=[] -->
 # SARIMA
+<!-- #endregion -->
 
 ```python
-sisplit = get_split_date(df, 0.70)
-sitest_data_spl = df[sisplit:]
-simodels, sipredictions = fit_model_sarimax((0,1,1), (1,0,1,12) , df, sisplit, [0, 0, 0, 1], 'powell', True)
+_, si_test_data, si_split = split_train_test(df, 0.70)
+si_models, si_predictions = fit_model_sarimax((0,1,1), (1,0,1,12) , df, si_split, [0, 0, 0, 1], 'powell', True)
+plot_test_with_predictions(si_test_data, si_predictions, "Predict with SARIMA model")
 
-plt.figure(figsize=(8,4))
+si_mse, si_rmse, si_mae = get_metrics(si_test_data.values, si_predictions)
+print_metrics(si_mse, si_rmse, si_mae)
+```
 
-plt.plot(sitest_data_spl)
-plt.plot(sipredictions)
+# Compare models
 
-plt.legend(('Data', 'Predictions'), fontsize=16)
+```python
+models_metric = pd.DataFrame({"MSE":[b_mse, lr_mse, es_mse, ar_mse, ma_mse, arma_mse, i_mse, si_mse],
+                            "RMSE": [b_rmse, lr_rmse, es_rmse, ar_rmse, ma_rmse, arma_rmse, i_rmse, si_rmse],
+                            "MAE": [b_mae, lr_mae, es_mae, ar_mae, ma_mae, arma_mae, i_mae, si_mae],
+                             "Model":["Last_value", "Linear_regression","Exponential soothing", "AR", "MA", "ARMA", "ARIMA", "SARIMA" ]
+                             })
 ```
 
 ```python
-simse = mean_squared_error(sitest_data_spl['Num_Passengers'], sipredictions['Num_Passengers'])  
-sirmse = mean_squared_error(sitest_data_spl['Num_Passengers'], sipredictions['Num_Passengers'],
-                                      squared=False)          
-simae = mean_absolute_error(sitest_data_spl['Num_Passengers'], sipredictions['Num_Passengers'])
-
-print("MSE - ", simse)
-print("RMSE - ", sirmse)
-print("MAE - ", simae)
+models_metric
 ```
 
+```python
+plt.title("Compare models by MSE")
+sns.barplot(data=models_metric, x="MSE", y="Model")
+plt.show()
+```
+
+```python
+plt.title("Compare models by RMSE")
+sns.barplot(data=models_metric, x="RMSE", y="Model")
+plt.show()
+```
+
+```python
+plt.title("Compare models by MAE")
+sns.barplot(data=models_metric, x="MAE", y="Model")
+plt.show()
+```
+
+<!-- #region tags=[] -->
 # Scalecast
+<!-- #endregion -->
 
 ```python
 f = Forecaster(y=df['Num_Passengers'],current_dates=df.index)
@@ -499,7 +652,9 @@ plt.show()
 f.regr.summary()
 ```
 
+<!-- #region tags=[] -->
 # Pmdarima
+<!-- #endregion -->
 
 ```python
 auto_arima(
@@ -531,4 +686,8 @@ plt.show()
 
 ```python
 f.regr.summary()
+```
+
+```python
+
 ```
