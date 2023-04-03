@@ -227,19 +227,6 @@ pacf_plot = plot_pacf(yearly_dif.Num_Passengers, method='ywm')
 ## Utils
 <!-- #endregion -->
 
-```python
-preprocessed_df = yearly_dif
-```
-
-```python
-processing_list = [df, first_dif, yearly_dif]
-preprocessing_data = pd.concat(processing_list, axis=1, keys= ['Origin', 'Fist_processed', 'Finall_processed'])
-```
-
-```python
-preprocessing_data.head()
-```
-
 <!-- #region tags=[] -->
 ### Rolling forecast utility functions
 <!-- #endregion -->
@@ -268,13 +255,12 @@ def exponentialSmoothing(dataframe, split, verbose=False):
 
 ```python
 def linear_regression_with_season(x, y):
-    if len(x)<12:
+    if len(y)<12:
         raise ValueError("This prediction require more then year of test data")
     model = LinearRegression()
     fit = model.fit(x, y)
-    lin_pred = fit.predict([y[-1,:]+1])
-    
-    pred = lin_pred[0][0] + (x[-12][0] - fit.predict([y[-12,:]])[0][0])
+    lin_pred = fit.predict([x[-1,:]+1])
+    pred = lin_pred[0][0] + (y[-12][0] - fit.predict([x[-12,:]])[0][0])
     return fit, pred
 ```
 
@@ -287,10 +273,101 @@ def fit_linear_regression_with_season(dataframe, split, verbose=False):
         if(verbose): print(i, " iteration")
         data = dataframe[:cur_date - timedelta(days=1)]['Num_Passengers'].values.reshape(-1, 1)
         index = np.arange(len(data)).reshape(-1, 1)
-        fit, pred = linear_regression_with_season(data, index)
+        fit, pred = linear_regression_with_season(index, data)
         
         model_fit.append(fit)
         predictions.append(pred)
+    predictions_df = pd.DataFrame({'Month': prediction_range,
+                   'Num_Passengers': predictions})
+    predictions_df = predictions_df.set_index('Month')
+    
+    return model_fit, predictions_df
+```
+
+```python
+def linear_regression(x, y, predict):
+    model = LinearRegression()
+    fit = model.fit(x, y)
+    pred = fit.predict(predict)[0]
+    return fit, pred
+```
+
+```python
+def fit_linear_regression_with_12_lag(dataframe, split, verbose=False):
+    model_fit = []
+    predictions =  []
+    prediction_range = pd.date_range(split,  dataframe.index[-1], freq='MS')
+    for i, cur_date in enumerate(prediction_range):
+        if(verbose): print(i, " iteration")
+        train_data = dataframe[:cur_date].reset_index(drop=True)
+        train_data["lag_12"] = train_data["Num_Passengers"].shift(12)
+        train_data = train_data[12:]
+        train_data["lag_1"] = train_data["Num_Passengers"].shift(1)
+        train_data = train_data[1:]
+        
+        train_col = ["lag_1", "lag_12"]
+        fit, pred = linear_regression(train_data[train_col].iloc[:-1, :], train_data["Num_Passengers"].iloc[:-1], 
+                                     train_data[train_col].iloc[-1:, :])
+        model_fit.append(fit)
+        predictions.append(pred)
+        
+    predictions_df = pd.DataFrame({'Month': prediction_range,
+                   'Num_Passengers': predictions})
+    predictions_df = predictions_df.set_index('Month')
+    
+    return model_fit, predictions_df
+```
+
+```python
+def fit_linear_regression_with_diff_of_12_lag(dataframe, split, verbose=False):
+    model_fit = []
+    predictions =  []
+    prediction_range = pd.date_range(split,  dataframe.index[-1], freq='MS')
+    for i, cur_date in enumerate(prediction_range):
+        if(verbose): print(i, " iteration")
+        train_data = dataframe[:cur_date].reset_index(drop=True)
+        train_data["lag_12"] = train_data["Num_Passengers"].shift(12)
+        train_data = train_data[12:]
+        train_data["lag_1"] =train_data["Num_Passengers"].shift(1)
+        train_data = train_data[1:]
+        train_data["diff_lag"] =  train_data["lag_12"]-train_data["lag_1"] 
+       
+        train_col = ["lag_1", "diff_lag"]
+        fit, pred = linear_regression(train_data[train_col].iloc[:-1, :], train_data["Num_Passengers"].iloc[:-1], 
+                                     train_data[train_col].iloc[-1:, :])
+        model_fit.append(fit)
+        predictions.append(pred)
+        
+    predictions_df = pd.DataFrame({'Month': prediction_range,
+                   'Num_Passengers': predictions})
+    predictions_df = predictions_df.set_index('Month')
+    
+    return model_fit, predictions_df
+```
+
+```python
+def fit_linear_regression_with_lag_of_12_diff(dataframe, split, verbose=False):
+    model_fit = []
+    predictions =  []
+    prediction_range = pd.date_range(split,  dataframe.index[-1], freq='MS')
+    for i, cur_date in enumerate(prediction_range):
+        if(verbose): print(i, " iteration")
+        train_data = dataframe[:cur_date].reset_index(drop=True)
+        train_data["lag_1"] = train_data["Num_Passengers"].shift(1)
+        train_data = train_data[1:]
+        
+        train_data["diff"] = train_data["Num_Passengers"].diff(1)
+        train_data = train_data[1:]
+        
+        train_data["lag_diff_12"] = train_data["diff"].shift(12)
+        train_data = train_data[12:]
+       
+        train_col = ["lag_1", "lag_diff_12"]
+        fit, pred = linear_regression(train_data[train_col].iloc[:-1, :], train_data["Num_Passengers"].iloc[:-1], 
+                                     train_data[train_col].iloc[-1:, :])
+        model_fit.append(fit)
+        predictions.append(pred)
+        
     predictions_df = pd.DataFrame({'Month': prediction_range,
                    'Num_Passengers': predictions})
     predictions_df = predictions_df.set_index('Month')
@@ -317,14 +394,14 @@ def fit_model_arima(order, dataframe, split, method=None, verbose=False):
 ```
 
 ```python
-def fit_model_sarimax(order, seasonal_order, dataframe, split,start_params=None, method=None, verbose=False):
+def fit_model_sarimax(order, seasonal_order, dataframe, split, verbose=False):
     model_fit = []
     predictions =  []
     
     for i, cur_date in enumerate(pd.date_range(split,  dataframe.index[-1], freq='MS')):
         if(verbose): print(i, " iteration")
         model = SARIMAX(dataframe[:cur_date - timedelta(days=1)], order=order, seasonal_order=seasonal_order)
-        fit = model.fit(start_params=start_params, method=method)
+        fit = model.fit()
         pred = fit.predict(start=cur_date, end=cur_date) 
         
         model_fit.append(fit)
@@ -399,33 +476,6 @@ def inverse_diffirence(observation, diffs, periods):
     return restored.iloc[periods:]
 ```
 
-```python
-def restore_data(origin, processed_prev,  diffs):
-    fd =  inverse_diffirence(processed_prev.iloc[-12:,:], diffs, 12)
-    restored = inverse_diffirence(origin.iloc[-1:,:], fd, 1)
-    return restored
-```
-
-```python
-def restore_prediction(proc_flow, predictions, split_date):
-    train_o, _ = split_train_test_by_date(proc_flow['Origin'], split_date)
-    train_f, _ = split_train_test_by_date(proc_flow['Fist_processed'], split_date)
-    return restore_data(train_o, train_f, predictions)
-```
-
-```python
-def restore_test(proc_flow, test):
-    index = test.index.values
-    return proc_flow['Origin'].loc[index]
-```
-
-```python
-def get_metrics_from_restored(proc_flow, test_data, predictions, split_date):
-    restored_pred = restore_prediction(proc_flow, predictions, split_date)
-    restored_test = restore_test(proc_flow, test_data)
-    return get_metrics(restored_test, restored_pred)
-```
-
 <!-- #region tags=[] -->
 ## Baseline
 <!-- #endregion -->
@@ -456,6 +506,39 @@ lr_mse, lr_rmse, lr_mae = get_metrics(lr_test_data.values, lr_predictons)
 print_metrics(lr_mse, lr_rmse, lr_mae)
 ```
 
+## Linear regression a1 *xt + a2*xt-12 +b
+
+```python
+_, b1_test_data, b1_split_date = split_train_test(df, 0.70)
+_,b1_predictons = fit_linear_regression_with_12_lag(df, b1_split_date)
+plot_test_with_predictions(b1_test_data, b1_predictons, "Linear regression a1 *xt + a2*xt-12 +b")
+
+b1_mse, b1_rmse, b1_mae = get_metrics(b1_test_data.values, b1_predictons)
+print_metrics(b1_mse, b1_rmse, b1_mae)
+```
+
+## Linear regression  a1 *xt + a2*(xt-12 - xt) +b
+
+```python
+_, b2_test_data, b2_split_date = split_train_test(df, 0.70)
+_,b2_predictons = fit_linear_regression_with_diff_of_12_lag(df, b2_split_date)
+plot_test_with_predictions(b2_test_data, b2_predictons, "Linear regression  a1 *xt + a2*(xt-12 - xt) +b")
+
+b2_mse, b2_rmse, b2_mae = get_metrics(b2_test_data.values, b2_predictons)
+print_metrics(b2_mse, b2_rmse, b2_mae)
+```
+
+## Linear regression a1 *xt + a2*(xt-11 - xt-12) +b
+
+```python
+_, b3_test_data, b3_split_date = split_train_test(df, 0.70)
+_, b3_predictons = fit_linear_regression_with_lag_of_12_diff(df, b3_split_date)
+plot_test_with_predictions(b3_test_data, b3_predictons, "Linear regression a1 *xt + a2*(xt-11 - xt-12) +b")
+
+b3_mse, b3_rmse, b3_mae = get_metrics(b3_test_data.values, b3_predictons)
+print_metrics(b3_mse, b3_rmse, b3_mae)
+```
+
 <!-- #region tags=[] -->
 ## ExponentialSmoothing
 <!-- #endregion -->
@@ -469,16 +552,20 @@ es_mse, es_rmse, es_mae = get_metrics(es_test_data.values, es_predictons)
 print_metrics(es_mse, es_rmse, es_mae)
 ```
 
+```python
+es_models[-1].summary()
+```
+
 <!-- #region tags=[] -->
 ## AR model
 <!-- #endregion -->
 
 ```python
-train_data, test_data, _ = split_train_test(preprocessed_df, 0.95)
+train_data, test_data, _ = split_train_test(df, 0.95)
 ```
 
 ```python
-ar_model = ARIMA(train_data, order=(2,0,0))
+ar_model = ARIMA(train_data, order=(2,1,0))
 ar_fit = ar_model.fit()
 ```
 
@@ -494,15 +581,11 @@ plot_test_with_predictions(test_data, predictions, "Predict whole test data with
 ### Predict one value then fit model again
 
 ```python
-_, ar_test_data, ar_split = split_train_test(preprocessed_df, 0.70)
-ar_models, ar_predictions = fit_model_arima((1,0,0), preprocessed_df, ar_split)
+_, ar_test_data, ar_split = split_train_test(df, 0.70)
+ar_models, ar_predictions = fit_model_arima((2,1, 0), df, ar_split)
 plot_test_with_predictions(ar_test_data, ar_predictions, "Predict with AR model")
 
-ar_mse_p, ar_rmse_p, ar_mae_p = get_metrics(ar_test_data.values, ar_predictions)
-print_metrics(ar_mse_p, ar_rmse_p, ar_mae_p)
-print("___________________________")
-print("Restored metrics:")
-ar_mse, ar_rmse, ar_mae  = get_metrics_from_restored(preprocessing_data, ar_test_data, ar_predictions, ar_split)
+ar_mse, ar_rmse, ar_mae = get_metrics(ar_test_data.values, ar_predictions)
 print_metrics(ar_mse, ar_rmse, ar_mae)
 ```
 
@@ -515,16 +598,11 @@ ar_models[-1].summary()
 <!-- #endregion -->
 
 ```python
-_, ma_test_data, ma_split = split_train_test(preprocessed_df, 0.70)
-ma_models, ma_predictions = fit_model_arima((0,0,3), preprocessed_df, ma_split)
+_, ma_test_data, ma_split = split_train_test(df, 0.70)
+ma_models, ma_predictions = fit_model_arima((0,1,2), df, ma_split)
 plot_test_with_predictions(ma_test_data, ma_predictions, "Predict with MA model")
 
-ma_mse_p, ma_rmse_p, ma_mae_p = get_metrics(ma_test_data.values, ma_predictions)
-print_metrics(ma_mse_p, ma_rmse_p, ma_mae_p)
-
-print("___________________________")
-print("Restored metrics:")
-ma_mse, ma_rmse, ma_mae  = get_metrics_from_restored(preprocessing_data, ma_test_data, ma_predictions, ma_split)
+ma_mse, ma_rmse, ma_mae = get_metrics(ma_test_data.values, ma_predictions)
 print_metrics(ma_mse, ma_rmse, ma_mae)
 ```
 
@@ -533,34 +611,12 @@ ma_models[-1].summary()
 ```
 
 <!-- #region tags=[] -->
-## ARMA model
-<!-- #endregion -->
-
-```python
-_, arma_test_data, arma_split = split_train_test(preprocessed_df, 0.70)
-arma_models, arma_predictions = fit_model_arima((2,0,2), preprocessed_df, arma_split)
-plot_test_with_predictions(arma_test_data, arma_predictions, "Predict with ARMA model")
-
-arma_mse_p, arma_rmse_p, arma_mae_p = get_metrics(arma_test_data.values, arma_predictions)
-print_metrics(arma_mse_p, arma_rmse_p, arma_mae_p)
-
-print("___________________________")
-print("Restored metrics:")
-arma_mse, arma_rmse, arma_mae  = get_metrics_from_restored(preprocessing_data, arma_test_data, arma_predictions, arma_split)
-print_metrics(arma_mse, arma_rmse, arma_mae)
-```
-
-```python
-arma_models[-1].summary()
-```
-
-<!-- #region tags=[] -->
 ## ARIMA model
 <!-- #endregion -->
 
 ```python
 i_train, i_test_data, i_split = split_train_test(df, 0.70)
-i_models, i_predictions = fit_model_arima((4,1,1), df, i_split)
+i_models, i_predictions = fit_model_arima((2,1,1), df, i_split)
 plot_test_with_predictions(i_test_data, i_predictions, "Predict with ARIMA model")
 i_mse, i_rmse, i_mae = get_metrics(i_test_data.values, i_predictions)
 print_metrics(i_mse, i_rmse, i_mae)
@@ -576,7 +632,7 @@ i_models[-1].summary()
 
 ```python
 _, si_test_data, si_split = split_train_test(df, 0.70)
-si_models, si_predictions = fit_model_sarimax((0,1,1), (1,0,1,12) , df, si_split, [0, 0, 0, 1], 'powell', True)
+si_models, si_predictions = fit_model_sarimax((1, 1, 1), (1,1,1,12) , df, si_split)
 plot_test_with_predictions(si_test_data, si_predictions, "Predict with SARIMA model")
 
 si_mse, si_rmse, si_mae = get_metrics(si_test_data.values, si_predictions)
@@ -586,10 +642,10 @@ print_metrics(si_mse, si_rmse, si_mae)
 # Compare models
 
 ```python
-models_metric = pd.DataFrame({"MSE":[b_mse, lr_mse, es_mse, ar_mse, ma_mse, arma_mse, i_mse, si_mse],
-                            "RMSE": [b_rmse, lr_rmse, es_rmse, ar_rmse, ma_rmse, arma_rmse, i_rmse, si_rmse],
-                            "MAE": [b_mae, lr_mae, es_mae, ar_mae, ma_mae, arma_mae, i_mae, si_mae],
-                             "Model":["Last_value", "Linear_regression","Exponential soothing", "AR", "MA", "ARMA", "ARIMA", "SARIMA" ]
+models_metric = pd.DataFrame({"MSE":[b_mse, b1_mse, b2_mse, b3_mse, lr_mse, es_mse, ar_mse, ma_mse, i_mse, si_mse],
+                            "RMSE": [b_rmse, b1_rmse, b2_rmse, b3_rmse, lr_rmse, es_rmse, ar_rmse, ma_rmse, i_rmse, si_rmse],
+                            "MAE": [b_mae, b1_mae, b2_mae, b3_mae, lr_mae, es_mae, ar_mae, ma_mae, i_mae, si_mae],
+                             "Model":["Last_value", "Linear_regression v0", "Linear_regression v1", "Linear_regression v2" , "Linear_regression v3" , "Exponential soothing", "AR", "MA",  "ARIMA", "SARIMA" ]
                              })
 ```
 
@@ -663,7 +719,7 @@ auto_arima(
     start_q=1,
     max_p=6,
     max_q=6,
-    m=12,
+    m=20,
     seasonal=True,
     max_P=2, 
     max_D=2,
@@ -673,13 +729,13 @@ auto_arima(
     error_action='ignore',
     suppress_warnings=True,
     stepwise=True,
-    information_criterion="aic",
+    information_criterion="bic", #{'bic', 'hqic', 'oob', 'aicc', 'aic'}
     alpha=0.05,
     scoring='mse',
-    call_me='arima2',
+    call_me='arima3',
 )
 
-f.plot_test_set(ci=True,models='arima2')
+f.plot_test_set(ci=True,models='arima3')
 plt.title('ARIMA Test-Set Performance',size=14)
 plt.show()
 ```
