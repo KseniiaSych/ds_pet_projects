@@ -37,6 +37,10 @@ from scalecast.Forecaster import Forecaster
 from scalecast.auxmodels import auto_arima
 ```
 
+<!-- #region tags=[] -->
+# Read and view data
+<!-- #endregion -->
+
 ```python
 sns.set_theme()
 %matplotlib inline
@@ -54,17 +58,11 @@ df.head()
 ```
 
 ```python
-print(df.dtypes)
+df.info()
 ```
 
 ```python
-print("Nan by columns:")
-for col in df.columns:
-    print(col, " - ", df[col].isna().sum())
-    
-print("Minimum number of passagers overall:", df["Num_Passengers"].min())
-print("Maximum number of passagers overall:", df["Num_Passengers"].max())
-print("Amount of measurements:", df["Num_Passengers"].count())
+df.describe()
 ```
 
 ```python
@@ -74,42 +72,7 @@ sns.lineplot(x="Month", y="Num_Passengers",
 plt.show()
 ```
 
-<!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
-# STL Decompozition
-<!-- #endregion -->
-
-```python
-stl = STL(df)
-result = stl.fit()
-```
-
-```python
-seasonal, trend, resid = result.seasonal, result.trend, result.resid
-```
-
-```python
-plt.figure(figsize=(8,6))
-
-plt.subplot(4,1,1)
-plt.plot(df)
-plt.title('Original Series', fontsize=16)
-
-plt.subplot(4,1,2)
-plt.plot(trend)
-plt.title('Trend', fontsize=16)
-
-plt.subplot(4,1,3)
-plt.plot(seasonal)
-plt.title('Seasonal', fontsize=16)
-
-plt.subplot(4,1,4)
-plt.plot(resid)
-plt.title('Residual', fontsize=16)
-
-plt.tight_layout()
-```
-
-<!-- #region tags=[] jp-MarkdownHeadingCollapsed=true -->
+<!-- #region tags=[] jp-MarkdownHeadingCollapsed=true tags=[] -->
 # ACF & PACF
 <!-- #endregion -->
 
@@ -122,24 +85,56 @@ pacf_plot = plot_pacf(df.Num_Passengers, method='ywm')
 ```
 
 <!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
+# STL Decompozition
+<!-- #endregion -->
+
+```python
+stl = STL(df)
+result = stl.fit()
+result.plot()
+plt.show()
+```
+
+```python
+stl_decompos_results = [result.seasonal, result.trend, result.resid]
+stl_titles = ["Seasonal", "Trend", "Residual"]
+plot_origin = [1,1,0]
+
+fig, axs = plt.subplots(nrows=3, ncols=1, figsize=(8,6))
+plt.subplots_adjust(hspace=0.5)
+fig.suptitle("STL decomposition", fontsize=18, y=0.95)
+
+for data, name, ax, plot_o in zip(stl_decompos_results,stl_titles , axs.ravel(), plot_origin):
+    data.plot(ax=ax)
+    if plot_o:
+        df.plot(ax=ax, style='g--')
+    ax.set_title(name)
+    ax.set_xlabel("")
+    if legend:=ax.get_legend():
+        legend.remove()
+
+plt.tight_layout()
+plt.show()
+```
+
+<!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
 # Stationarity
 <!-- #endregion -->
 
 ```python
-def adf_test(timeseries):
-    print("Results of Dickey-Fuller Test:")
-    dftest = adfuller(timeseries, autolag="AIC")
-    dfoutput = pd.Series(
-        dftest[0:4],
-        index=[
+ln = 28
+param_names =[
             "Test Statistic",
             "p-value",
             "#Lags Used",
             "Number of Observations Used",
-        ],
-    )
-    print(dfoutput)
-    is_not = 'is' if dfoutput[1]<0.05 else 'is not'
+        ]
+def adf_test(timeseries):
+    print("Results of Dickey-Fuller Test:")
+    dftest = adfuller(timeseries, autolag="AIC")
+    for name, value in zip(param_names, dftest[0:4]):
+        print(name.ljust(ln), value)
+    is_not = 'is' if dftest[1]<0.05 else 'is not'
     print(f"Time series {is_not} stationary")
 ```
 
@@ -148,11 +143,15 @@ adf_test(df)
 ```
 
 ```python
-df.rolling(window = 12).mean().plot(figsize=(8,4), color="tab:red", title="Rolling Mean over 12 month period");
+ax = df.plot()
+df.rolling(window = 12).mean().plot(figsize=(8,4), color="tab:red", title="Rolling Mean over 12 month period",
+                                    ax=ax, legend=False)
+plt.show()
 ```
 
 ```python
-df.rolling(window = 12).var().plot(figsize=(8,4), color="tab:red", title="Rolling Variance over 12 month period");
+df.rolling(window = 12).var().plot(figsize=(8,4), color="tab:red", title="Rolling Variance over 12 month period", legend=False)
+plt.show()
 ```
 
 <!-- #region tags=[] -->
@@ -168,24 +167,7 @@ plt.figure(figsize=(9,3))
 plt.title("First Difference")
 sns.lineplot(x="Month", y="Num_Passengers", data=first_dif, )
 plt.show()
-```
-
-```python
 adf_test(first_dif)
-```
-
-### Second option
-
-```python
-y_detrend = ((df - df.rolling(window=12).mean())/df.rolling(window=12).std())[11:]
-plt.figure(figsize=(9,3))
-plt.title("Detrend")
-sns.lineplot(x="Month", y="Num_Passengers", data=y_detrend, )
-plt.show()
-```
-
-```python
-adf_test(y_detrend)
 ```
 
 <!-- #region tags=[] -->
@@ -202,14 +184,11 @@ plt.title("Yearly Difference")
 sns.lineplot(x="Month", y="Num_Passengers",
              data=yearly_dif)
 plt.show()
-```
-
-```python
 adf_test(yearly_dif)
 ```
 
 <!-- #region tags=[] -->
-# ACF & PACF
+## ACF & PACF
 <!-- #endregion -->
 
 ```python
@@ -301,9 +280,8 @@ def fit_linear_regression_with_12_lag(dataframe, split, verbose=False):
         if(verbose): print(i, " iteration")
         train_data = dataframe[:cur_date].reset_index(drop=True)
         train_data["lag_12"] = train_data["Num_Passengers"].shift(12)
-        train_data = train_data[12:]
         train_data["lag_1"] = train_data["Num_Passengers"].shift(1)
-        train_data = train_data[1:]
+        train_data.dropna(inplace=True)
         
         train_col = ["lag_1", "lag_12"]
         fit, pred = linear_regression(train_data[train_col].iloc[:-1, :], train_data["Num_Passengers"].iloc[:-1], 
@@ -384,7 +362,7 @@ def fit_model_arima(order, dataframe, split, method=None, verbose=False):
         if(verbose): print(i, " iteration")
         model = ARIMA(dataframe[:cur_date - timedelta(days=1)], order = order)
         fit = model.fit(method=method)
-        pred = fit.predict(start=cur_date, end=cur_date) 
+        pred = fit.forecast() 
         
         model_fit.append(fit)
         predictions.append(pred)
@@ -411,6 +389,8 @@ def fit_model_sarimax(order, seasonal_order, dataframe, split, verbose=False):
     return model_fit, predictions_df
 ```
 
+### Split
+
 ```python
 def get_split_date(data, split_coef):
     if split_coef<0 or split_coef>1:
@@ -435,6 +415,8 @@ def split_train_test_by_date(df_to_split, split_date):
     test_data = df_to_split[split_date:]
     return train_data, test_data
 ```
+
+### Metrics and plots
 
 ```python
 def get_metrics_for_df(test_data, predictions, col='Num_Passengers'):
@@ -468,12 +450,15 @@ def plot_test_with_predictions(test, pred, name):
 ```
 
 ```python
-def inverse_diffirence(observation, diffs, periods):
-    restored = observation.copy()
-    restored.iloc[periods+1:] = np.nan
-    for d, val in diffs.iterrows():
-        restored.loc[d] = restored.loc[d - pd.DateOffset(months=periods)] + val
-    return restored.iloc[periods:]
+def model_stats(model_fit):
+    print(model_fit.summary())
+     
+    fig, axs = plt.subplots(nrows=2, ncols=1)
+    plt.subplots_adjust(hspace=0.7)
+    
+    model_fit.resid.plot(ax=axs[0], title = "Model residuals")
+    model_fit.resid.plot(kind='kde', ax=axs[1], title = "Last model residuals distribution")
+    plt.show()
 ```
 
 <!-- #region tags=[] -->
@@ -506,7 +491,7 @@ lr_mse, lr_rmse, lr_mae = get_metrics(lr_test_data.values, lr_predictons)
 print_metrics(lr_mse, lr_rmse, lr_mae)
 ```
 
-## Linear regression a1 *xt + a2*xt-12 +b
+### Linear regression a1 *xt + a2*xt-12 +b
 
 ```python
 _, b1_test_data, b1_split_date = split_train_test(df, 0.70)
@@ -517,7 +502,7 @@ b1_mse, b1_rmse, b1_mae = get_metrics(b1_test_data.values, b1_predictons)
 print_metrics(b1_mse, b1_rmse, b1_mae)
 ```
 
-## Linear regression  a1 *xt + a2*(xt-12 - xt) +b
+### Linear regression  a1 *xt + a2*(xt-12 - xt) +b
 
 ```python
 _, b2_test_data, b2_split_date = split_train_test(df, 0.70)
@@ -528,7 +513,7 @@ b2_mse, b2_rmse, b2_mae = get_metrics(b2_test_data.values, b2_predictons)
 print_metrics(b2_mse, b2_rmse, b2_mae)
 ```
 
-## Linear regression a1 *xt + a2*(xt-11 - xt-12) +b
+### Linear regression a1 *xt + a2*(xt-11 - xt-12) +b
 
 ```python
 _, b3_test_data, b3_split_date = split_train_test(df, 0.70)
@@ -590,7 +575,7 @@ print_metrics(ar_mse, ar_rmse, ar_mae)
 ```
 
 ```python
-ar_models[-1].summary()
+model_stats(ar_models[-1])
 ```
 
 <!-- #region tags=[] -->
@@ -742,6 +727,20 @@ plt.show()
 
 ```python
 f.regr.summary()
+```
+
+# Misc
+
+
+## Another option to detrend
+
+```python
+y_detrend = ((df - df.rolling(window=12).mean())/df.rolling(window=12).std())[11:]
+plt.figure(figsize=(9,3))
+plt.title("Detrend")
+sns.lineplot(x="Month", y="Num_Passengers", data=y_detrend, )
+plt.show()
+adf_test(y_detrend)
 ```
 
 ```python
