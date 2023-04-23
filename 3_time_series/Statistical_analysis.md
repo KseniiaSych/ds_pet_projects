@@ -32,9 +32,18 @@ from dateutil.relativedelta import relativedelta
 import math
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import train_test_split
 
 from scalecast.Forecaster import Forecaster
 from scalecast.auxmodels import auto_arima
+```
+
+<!-- #region tags=[] -->
+# Read and view data
+<!-- #endregion -->
+
+```python
+
 ```
 
 <!-- #region tags=[] -->
@@ -207,61 +216,8 @@ pacf_plot = plot_pacf(yearly_dif.Num_Passengers, method='ywm')
 <!-- #endregion -->
 
 <!-- #region tags=[] -->
-### Rolling forecast utility functions
+### Fit common functions
 <!-- #endregion -->
-
-```python
-def predict_previous_value(dataframe, split):
-    return dataframe[split + relativedelta(months=-1): ][:-1].shift(1, freq='M')
-```
-
-```python
-def exponentialSmoothing(dataframe, split, verbose=False):
-    model_fit = []
-    predictions =  []
-    for i, cur_date in enumerate(pd.date_range(split,  dataframe.index[-1], freq='MS')):
-        if(verbose): print(i, " iteration")
-        model = ExponentialSmoothing(dataframe[:cur_date - timedelta(days=1)], seasonal_periods = 12, trend='add', seasonal='add')
-        fit = model.fit()
-        pred = fit.predict(start=cur_date, end=cur_date) 
-        
-        model_fit.append(fit)
-        predictions.append(pred)
-    
-    predictions_df = pd.DataFrame(pd.concat(predictions, axis=0), columns=['Num_Passengers'])
-    return model_fit, predictions_df
-```
-
-```python
-def linear_regression_with_season(x, y):
-    if len(y)<12:
-        raise ValueError("This prediction require more then year of test data")
-    model = LinearRegression()
-    fit = model.fit(x, y)
-    lin_pred = fit.predict([x[-1,:]+1])
-    pred = lin_pred[0][0] + (y[-12][0] - fit.predict([x[-12,:]])[0][0])
-    return fit, pred
-```
-
-```python
-def fit_linear_regression_with_season(dataframe, split, verbose=False):
-    model_fit = []
-    predictions =  []
-    prediction_range = pd.date_range(split,  dataframe.index[-1], freq='MS')
-    for i, cur_date in enumerate(prediction_range):
-        if(verbose): print(i, " iteration")
-        data = dataframe[:cur_date - timedelta(days=1)]['Num_Passengers'].values.reshape(-1, 1)
-        index = np.arange(len(data)).reshape(-1, 1)
-        fit, pred = linear_regression_with_season(index, data)
-        
-        model_fit.append(fit)
-        predictions.append(pred)
-    predictions_df = pd.DataFrame({'Month': prediction_range,
-                   'Num_Passengers': predictions})
-    predictions_df = predictions_df.set_index('Month')
-    
-    return model_fit, predictions_df
-```
 
 ```python
 def linear_regression(x, y, predict):
@@ -272,6 +228,7 @@ def linear_regression(x, y, predict):
 ```
 
 ```python
+<<<<<<< Updated upstream
 def fit_linear_regression_with_12_lag(dataframe, split, verbose=False):
     model_fit = []
     predictions =  []
@@ -354,6 +311,8 @@ def fit_linear_regression_with_lag_of_12_diff(dataframe, split, verbose=False):
 ```
 
 ```python
+=======
+>>>>>>> Stashed changes
 def fit_model_arima(order, dataframe, split, method=None, verbose=False):
     model_fit = []
     predictions =  []
@@ -369,6 +328,14 @@ def fit_model_arima(order, dataframe, split, method=None, verbose=False):
     
     predictions_df = pd.DataFrame(pd.concat(predictions, axis=0), columns=['Num_Passengers'])
     return model_fit, predictions_df
+```
+
+```python
+def fit_model_arima_all_test(order, test, train, method=None):
+    model = ARIMA(test, order = order)
+    fit = model.fit(method=method)
+    pred = fit.predict(start=train.index[0], end=train.index[-1]) 
+    return fit, pred
 ```
 
 ```python
@@ -390,6 +357,19 @@ def fit_model_sarimax(order, seasonal_order, dataframe, split, verbose=False):
 ```
 
 ### Split
+
+```python
+def fit_model_sarimax_all_test(order, seasonal_order,test, train):
+    model = SARIMAX(test, order=order, seasonal_order=seasonal_order)
+    fit = model.fit()
+    pred = fit.predict(start=train.index[0], end=train.index[-1]) 
+
+    return fit, pred
+```
+
+<!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
+### Split
+<!-- #endregion -->
 
 ```python
 def get_split_date(data, split_coef):
@@ -416,7 +396,13 @@ def split_train_test_by_date(df_to_split, split_date):
     return train_data, test_data
 ```
 
+<<<<<<< Updated upstream
 ### Metrics and plots
+=======
+<!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
+### Metrics and plots
+<!-- #endregion -->
+>>>>>>> Stashed changes
 
 ```python
 def get_metrics_for_df(test_data, predictions, col='Num_Passengers'):
@@ -470,6 +456,11 @@ def model_stats(model_fit):
 <!-- #endregion -->
 
 ```python
+def predict_previous_value(dataframe, split):
+    return dataframe[split + relativedelta(months=-1): ][:-1].shift(1, freq='M')
+```
+
+```python
 _, b_test_data, split_date = split_train_test(df, 0.70)
 b_predictons = predict_previous_value(df, split_date)
 plot_test_with_predictions(b_test_data, b_predictons, "Prediction is last known value")
@@ -482,6 +473,41 @@ print_metrics(b_mse, b_rmse, b_mae)
 ### Linear regression with seasonal residual
 <!-- #endregion -->
 
+```python tags=[]
+def linear_regression_with_season(x, y, predict):
+    if len(y)<12:
+        raise ValueError("This prediction require more then year of test data")
+    model = LinearRegression()
+    fit = model.fit(x, y)
+    predict_test = fit.predict(x)
+    predictions = fit.predict(predict)
+    for i in range(len(predictions)):
+        predictions[i]+= (y[i-12] - predict_test[i-12])
+    return fit, predictions
+```
+
+#### Rolling predictions
+
+```python
+def fit_linear_regression_with_season(dataframe, split, verbose=False):
+    model_fit = []
+    predictions =  []
+    prediction_range = pd.date_range(split,  dataframe.index[-1], freq='MS')
+    for i, cur_date in enumerate(prediction_range):
+        if(verbose): print(i, " iteration")
+        data = dataframe[:cur_date - timedelta(days=1)]['Num_Passengers'].values.reshape(-1, 1)
+        index = np.arange(len(data)).reshape(-1, 1)
+        fit, pred = linear_regression_with_season(index, data, [index[-1]+1])
+        
+        model_fit.append(fit)
+        predictions.extend(pred)
+    predictions_df = pd.DataFrame({'Month': prediction_range,
+                   'Num_Passengers': predictions})
+    predictions_df = predictions_df.set_index('Month')
+    
+    return model_fit, predictions_df
+```
+
 ```python
 _, lr_test_data, lr_split_date = split_train_test(df, 0.70)
 lr_models, lr_predictons = fit_linear_regression_with_season(df, lr_split_date)
@@ -491,7 +517,64 @@ lr_mse, lr_rmse, lr_mae = get_metrics(lr_test_data.values, lr_predictons)
 print_metrics(lr_mse, lr_rmse, lr_mae)
 ```
 
+<<<<<<< Updated upstream
 ### Linear regression a1 *xt + a2*xt-12 +b
+=======
+<!-- #region tags=[] -->
+#### Predict all test at once
+<!-- #endregion -->
+
+```python tags=[]
+def fit_linear_regression_with_season_all_test(train, test):
+    y = train['Num_Passengers'].values.reshape(-1, 1)
+    x = np.arange(len(y)).reshape(-1, 1)
+    x_test =  np.arange(len(test)).reshape(-1, 1)
+    fit, pred = linear_regression_with_season(x, y, x_test)
+    predictions_df = pd.DataFrame({'Month': test.index,
+                   'Num_Passengers':pred.flatten()})
+    predictions_df = predictions_df.set_index('Month')
+    return fit, predictions_df
+```
+
+```python
+lr1_train_data, lr1_test_data, _ = split_train_test(df, 0.70)
+lr1_models, lr1_predictons = fit_linear_regression_with_season_all_test(lr1_train_data, lr1_test_data)
+plot_test_with_predictions(lr1_test_data, lr1_predictons, "Linear regression with lag residual")
+
+lr1_mse, lr1_rmse, lr1_mae = get_metrics(lr1_test_data.values, lr1_predictons)
+print_metrics(lr1_mse, lr1_rmse, lr1_mae)
+```
+
+### Linear regression a1 *xt + a2*xt-12 +b
+
+
+#### Rolling predictions
+
+```python
+def fit_linear_regression_with_12_lag(dataframe, split, verbose=False):
+    model_fit = []
+    predictions =  []
+    prediction_range = pd.date_range(split,  dataframe.index[-1], freq='MS')
+    for i, cur_date in enumerate(prediction_range):
+        if(verbose): print(i, " iteration")
+        train_data = dataframe[:cur_date].reset_index(drop=True)
+        train_data["lag_12"] = train_data["Num_Passengers"].shift(12)
+        train_data["lag_1"] = train_data["Num_Passengers"].shift(1)
+        train_data.dropna(inplace=True)
+        
+        train_col = ["lag_1", "lag_12"]
+        X_train, X_test, y_train, _ = train_test_split(train_data[train_col],  train_data["Num_Passengers"], test_size = 1, shuffle = False)
+        fit, pred = linear_regression(X_train, y_train , X_test)
+        model_fit.append(fit)
+        predictions.append(pred)
+        
+    predictions_df = pd.DataFrame({'Month': prediction_range,
+                   'Num_Passengers': predictions})
+    predictions_df = predictions_df.set_index('Month')
+    
+    return model_fit, predictions_df
+```
+>>>>>>> Stashed changes
 
 ```python
 _, b1_test_data, b1_split_date = split_train_test(df, 0.70)
@@ -502,7 +585,80 @@ b1_mse, b1_rmse, b1_mae = get_metrics(b1_test_data.values, b1_predictons)
 print_metrics(b1_mse, b1_rmse, b1_mae)
 ```
 
+<<<<<<< Updated upstream
 ### Linear regression  a1 *xt + a2*(xt-12 - xt) +b
+=======
+#### Predict all test at once
+
+```python
+def linear_regression_with_12_lag_data(df):
+    lr_df = pd.DataFrame()
+    lr_df['Num_Passengers_1m_ago'] = df.Num_Passengers.shift(1)
+    lr_df['Num_Passengers_12m_ago'] = df.Num_Passengers.shift(12)
+    lr_df['Num_Passengers']=df.Num_Passengers
+    lr_df= lr_df.dropna()
+    x = lr_df.loc[:, ['Num_Passengers_1m_ago', 'Num_Passengers_12m_ago']].values
+
+    y = lr_df.loc[:, ['Num_Passengers']].values
+    return x,y, lr_df.index
+```
+
+```python
+def fit_linear_regression_with_12_lag_all_test(lr_train_data, lr_test_data):
+    x_train, y_train, _ = linear_regression_with_12_lag_data(lr_train_data)
+    reg = LinearRegression().fit(x_train, y_train)
+    x_test, y_test, test_index = linear_regression_with_12_lag_data(lr_test_data)
+
+    pred_test = reg.predict(x_test)
+    predictions_df = pd.DataFrame({'Month': test_index,
+                   'Num_Passengers': pred_test.flatten()})
+    predictions_df = predictions_df.set_index('Month')
+    
+    return reg, predictions_df
+```
+
+```python
+b12_train_data, b12_test_data, _ = split_train_test(df, 0.70)
+_, b12_predictons = fit_linear_regression_with_12_lag_all_test(b12_train_data, b12_test_data)
+plot_test_with_predictions(b12_test_data.loc[b12_predictons.index], b12_predictons, "Linear regression a1 *xt + a2*xt-12 +b")
+
+b12_mse, b12_rmse, b12_mae = get_metrics(b12_test_data.loc[b12_predictons.index].values, b12_predictons)
+print_metrics(b12_mse, b12_rmse, b12_mae)
+```
+
+### Linear regression  a1 *xt + a2*(xt-12 - xt) +b
+
+<!-- #region tags=[] -->
+#### Rolling predictions
+<!-- #endregion -->
+
+```python
+def fit_linear_regression_with_diff_of_12_lag(dataframe, split, verbose=False):
+    model_fit = []
+    predictions =  []
+    prediction_range = pd.date_range(split,  dataframe.index[-1], freq='MS')
+    for i, cur_date in enumerate(prediction_range):
+        if(verbose): print(i, " iteration")
+        train_data = dataframe[:cur_date].reset_index(drop=True)
+        train_data["lag_12"] = train_data["Num_Passengers"].shift(12)
+        train_data["lag_1"] =train_data["Num_Passengers"].shift(1)
+        train_data.dropna(inplace=True)
+        train_data["diff_lag"] =  train_data["lag_12"] - train_data["lag_1"] 
+       
+        train_col = ["lag_1", "diff_lag"]
+        X_train, X_test, y_train, _ = train_test_split(train_data[train_col],  train_data["Num_Passengers"], test_size = 1, shuffle = False)
+        fit, pred = linear_regression(X_train, y_train , X_test)
+       
+        model_fit.append(fit)
+        predictions.append(pred)
+        
+    predictions_df = pd.DataFrame({'Month': prediction_range,
+                   'Num_Passengers': predictions})
+    predictions_df = predictions_df.set_index('Month')
+    
+    return model_fit, predictions_df
+```
+>>>>>>> Stashed changes
 
 ```python
 _, b2_test_data, b2_split_date = split_train_test(df, 0.70)
@@ -513,7 +669,82 @@ b2_mse, b2_rmse, b2_mae = get_metrics(b2_test_data.values, b2_predictons)
 print_metrics(b2_mse, b2_rmse, b2_mae)
 ```
 
+<<<<<<< Updated upstream
 ### Linear regression a1 *xt + a2*(xt-11 - xt-12) +b
+=======
+#### Predict all test at once
+
+```python
+def linear_regression_with_diff_of_12_data(df):
+    lr_df = pd.DataFrame()
+    lr_df["Num_Passengers_1m_ago"] = df.Num_Passengers.shift(1)
+    lr_df["Num_Passengers_12m_ago"] = df.Num_Passengers.shift(12)
+    lr_df['Num_Passengers']=df.Num_Passengers
+    lr_df= lr_df.dropna()
+    lr_df["Num_Passengers_diff"] = lr_df["Num_Passengers_12m_ago"] - lr_df["Num_Passengers_1m_ago"]
+    
+    x = lr_df.loc[:, ['Num_Passengers_1m_ago', 'Num_Passengers_diff']].values
+    y = lr_df.loc[:, ['Num_Passengers']].values
+    return x,y, lr_df.index
+```
+
+```python
+def fit_linear_regression_with_diff_of_12_lag_all_test(lr_train_data, lr_test_data):
+    x_train, y_train, _ = linear_regression_with_diff_of_12_data(lr_train_data)
+    reg = LinearRegression().fit(x_train, y_train)
+    x_test, y_test, test_index = linear_regression_with_diff_of_12_data(lr_test_data)
+
+    pred_test = reg.predict(x_test)
+    predictions_df = pd.DataFrame({'Month': test_index,
+                   'Num_Passengers': pred_test.flatten()})
+    predictions_df = predictions_df.set_index('Month')
+    
+    return reg, predictions_df
+```
+
+```python
+b22_train_data, b22_test_data, _ = split_train_test(df, 0.70)
+_,b22_predictons = fit_linear_regression_with_diff_of_12_lag_all_test(b22_train_data, b22_test_data)
+plot_test_with_predictions(b22_test_data.loc[b22_predictons.index], b22_predictons, "Linear regression  a1 *xt + a2*(xt-12 - xt) +b")
+
+b22_mse, b22_rmse, b22_mae = get_metrics(b22_test_data.loc[b22_predictons.index], b22_predictons)
+print_metrics(b22_mse, b22_rmse, b22_mae)
+```
+
+<!-- #region tags=[] -->
+### Linear regression a1 *xt + a2*(xt-11 - xt-12) +b
+<!-- #endregion -->
+
+#### Rolling predictions
+
+```python
+def fit_linear_regression_with_lag_of_12_diff(dataframe, split, verbose=False):
+    model_fit = []
+    predictions =  []
+    prediction_range = pd.date_range(split,  dataframe.index[-1], freq='MS')
+    for i, cur_date in enumerate(prediction_range):
+        if(verbose): print(i, " iteration")
+        train_data = dataframe[:cur_date].reset_index(drop=True)
+        train_data["lag_1"] = train_data["Num_Passengers"].shift(1)
+        train_data["lag_diff_11"] = train_data["Num_Passengers"].shift(11)
+        train_data["lag_diff_12"] = train_data["Num_Passengers"].shift(12)
+        train_data.dropna(inplace=True)
+        train_data["diff_lag"] =  train_data["lag_diff_11"] - train_data["lag_diff_12"] 
+       
+        train_col = ["lag_1", "lag_diff_12"]
+        X_train, X_test, y_train, _ = train_test_split(train_data[train_col],  train_data["Num_Passengers"], test_size = 1, shuffle = False)
+        fit, pred = linear_regression(X_train, y_train , X_test)
+        
+        model_fit.append(fit)
+        predictions.append(pred)
+        
+    predictions_df = pd.DataFrame({'Month': prediction_range,
+                   'Num_Passengers': predictions})
+    predictions_df = predictions_df.set_index('Month')
+    
+    return model_fit, predictions_df
+```
+>>>>>>> Stashed changes
 
 ```python
 _, b3_test_data, b3_split_date = split_train_test(df, 0.70)
@@ -524,9 +755,69 @@ b3_mse, b3_rmse, b3_mae = get_metrics(b3_test_data.values, b3_predictons)
 print_metrics(b3_mse, b3_rmse, b3_mae)
 ```
 
+#### Predict all test at once
+
+```python
+def linear_regression_with_lag_of_12_diff_data(df):
+    lr_df = pd.DataFrame()
+    lr_df["Num_Passengers_1m_ago"] = df.Num_Passengers.shift(1)
+    lr_df["Num_Passengers_11m_ago"] = df.Num_Passengers.shift(11)
+    lr_df["Num_Passengers_12m_ago"] = df.Num_Passengers.shift(12)
+    lr_df['Num_Passengers']=df.Num_Passengers
+    lr_df= lr_df.dropna()
+    lr_df["Num_Passengers_diff"] = lr_df["Num_Passengers_11m_ago"] - lr_df["Num_Passengers_12m_ago"]
+    
+    x = lr_df.loc[:, ['Num_Passengers_1m_ago', 'Num_Passengers_diff']].values
+    y = lr_df.loc[:, ['Num_Passengers']].values
+    return x,y, lr_df.index
+```
+
+```python
+def fit_linear_regression_with_lag_of_12_diff_all_test(lr_train_data, lr_test_data):
+    x_train, y_train, _ = linear_regression_with_diff_of_12_data(lr_train_data)
+    reg = LinearRegression().fit(x_train, y_train)
+    x_test, y_test, test_index = linear_regression_with_diff_of_12_data(lr_test_data)
+
+    pred_test = reg.predict(x_test)
+    predictions_df = pd.DataFrame({'Month': test_index,
+                   'Num_Passengers': pred_test.flatten()})
+    predictions_df = predictions_df.set_index('Month')
+    
+    return reg, predictions_df
+```
+
+```python
+b32_train_data, b32_test_data, _ = split_train_test(df, 0.70)
+_, b32_predictons = fit_linear_regression_with_lag_of_12_diff_all_test(b32_train_data, b3_test_data)
+plot_test_with_predictions(b32_test_data.loc[b32_predictons.index], b32_predictons,\
+                           "Linear regression a1 *xt + a2*(xt-11 - xt-12) +b")
+
+b32_mse, b32_rmse, b32_mae = get_metrics(b32_test_data.loc[b32_predictons.index].values, b32_predictons)
+print_metrics(b32_mse, b32_rmse, b32_mae)
+```
+
 <!-- #region tags=[] -->
 ## ExponentialSmoothing
 <!-- #endregion -->
+
+#### Rolling predictions
+
+```python
+def exponentialSmoothing(dataframe, split, verbose=False):
+    model_fit = []
+    predictions =  []
+    for i, cur_date in enumerate(pd.date_range(split,  dataframe.index[-1], freq='MS')):
+        if(verbose): print(i, " iteration")
+        model = ExponentialSmoothing(dataframe[:cur_date - timedelta(days=1)], seasonal_periods = 12, trend='add', seasonal='add')
+        fit = model.fit()
+        pred = fit.predict(start=cur_date, end=cur_date) 
+        
+        model_fit.append(fit)
+        predictions.append(pred)
+    
+    predictions_df = pd.DataFrame(pd.concat(predictions, axis=0), columns=['Num_Passengers'])
+    return model_fit, predictions_df
+```
 
 ```python
 _, es_test_data, es_split_date = split_train_test(df, 0.70)
@@ -541,12 +832,32 @@ print_metrics(es_mse, es_rmse, es_mae)
 es_models[-1].summary()
 ```
 
+#### Predict all test at once
+
+```python
+def exponentialSmoothing_all_test(train, test):
+    model = ExponentialSmoothing(train, seasonal_periods = 12, trend='add', seasonal='add')
+    fit = model.fit()
+    pred = fit.predict(start=test.index[0], end=test.index[-1]) 
+    return fit, pred
+```
+
+```python
+es2_train_data, es2_test_data, es2_split_date = split_train_test(df, 0.70)
+es2_models, es2_predictons = exponentialSmoothing_all_test(es2_train_data, es2_test_data)
+plot_test_with_predictions(es2_test_data, es2_predictons, "ExponentialSmoothing")
+es2_mse, es2_rmse, es2_mae = get_metrics(es2_test_data.values, es2_predictons)
+print_metrics(es2_mse, es2_rmse, es2_mae)
+```
+
 <!-- #region tags=[] -->
 ## AR model
 <!-- #endregion -->
 
+### Predict all test at once
+
 ```python
-train_data, test_data, _ = split_train_test(df, 0.95)
+train_data, test_data, _ = split_train_test(df, 0.7)
 ```
 
 ```python
@@ -561,6 +872,9 @@ print(ar_fit.summary())
 ```python
 predictions = ar_fit.predict(start=test_data.index[0], end=test_data.index[-1])
 plot_test_with_predictions(test_data, predictions, "Predict whole test data with AR model")
+
+ar1_mse, ar1_rmse, ar1_mae = get_metrics(test_data.values, predictions)
+print_metrics(ar1_mse, ar1_rmse, ar1_mae)
 ```
 
 ### Predict one value then fit model again
@@ -582,6 +896,8 @@ model_stats(ar_models[-1])
 ## MA model
 <!-- #endregion -->
 
+### Predict one value then fit model again
+
 ```python
 _, ma_test_data, ma_split = split_train_test(df, 0.70)
 ma_models, ma_predictions = fit_model_arima((0,1,2), df, ma_split)
@@ -595,9 +911,22 @@ print_metrics(ma_mse, ma_rmse, ma_mae)
 ma_models[-1].summary()
 ```
 
+### Predict all test at once
+
+```python
+ma1_train_data, ma1_test_data, _ = split_train_test(df, 0.70)
+ma1_models, ma1_predictions = fit_model_arima_all_test((0,1,2), ma1_train_data, ma1_test_data)
+plot_test_with_predictions(ma1_test_data, ma1_predictions, "Predict with MA model")
+
+ma1_mse, ma1_rmse, ma1_mae = get_metrics(ma1_test_data.values, ma1_predictions.values)
+print_metrics(ma1_mse, ma1_rmse, ma1_mae)
+```
+
 <!-- #region tags=[] -->
 ## ARIMA model
 <!-- #endregion -->
+
+### Predict one value then fit model again
 
 ```python
 i_train, i_test_data, i_split = split_train_test(df, 0.70)
@@ -611,8 +940,23 @@ print_metrics(i_mse, i_rmse, i_mae)
 i_models[-1].summary()
 ```
 
+### Predict all test at once
+
+```python
+i1_train, i1_test_data, _ = split_train_test(df, 0.70)
+i1_models, i1_predictions = fit_model_arima_all_test((2,1,1), i1_train, i1_test_data)
+plot_test_with_predictions(i1_test_data, i1_predictions, "Predict with ARIMA model")
+
+i1_mse, i1_rmse, i1_mae = get_metrics(i1_test_data.values, i1_predictions.values)
+print_metrics(i1_mse, i1_rmse, i1_mae)
+```
+
 <!-- #region tags=[] -->
 # SARIMA
+<!-- #endregion -->
+
+<!-- #region tags=[] -->
+### Predict one value then fit model again
 <!-- #endregion -->
 
 ```python
@@ -624,13 +968,26 @@ si_mse, si_rmse, si_mae = get_metrics(si_test_data.values, si_predictions)
 print_metrics(si_mse, si_rmse, si_mae)
 ```
 
-# Compare models
+### Predict all test at once
+
+```python
+si1_train_data, si1_test_data, _ = split_train_test(df, 0.70)
+si1_models, si1_predictions = fit_model_sarimax_all_test((1, 1, 1), (1,1,1,12) , si1_train_data, si1_test_data)
+plot_test_with_predictions(si1_test_data, si1_predictions, "Predict with SARIMA model")
+
+si1_mse, si1_rmse, si1_mae = get_metrics(si1_test_data.values, si1_predictions.values)
+print_metrics(si1_mse, si1_rmse, si1_mae)
+
+```
+
+# Compare models that predicts one value at a time
 
 ```python
 models_metric = pd.DataFrame({"MSE":[b_mse, b1_mse, b2_mse, b3_mse, lr_mse, es_mse, ar_mse, ma_mse, i_mse, si_mse],
                             "RMSE": [b_rmse, b1_rmse, b2_rmse, b3_rmse, lr_rmse, es_rmse, ar_rmse, ma_rmse, i_rmse, si_rmse],
                             "MAE": [b_mae, b1_mae, b2_mae, b3_mae, lr_mae, es_mae, ar_mae, ma_mae, i_mae, si_mae],
-                             "Model":["Last_value", "Linear_regression v0", "Linear_regression v1", "Linear_regression v2" , "Linear_regression v3" , "Exponential soothing", "AR", "MA",  "ARIMA", "SARIMA" ]
+                             "Model":["Last_value", "Linear_regression v0", "Linear_regression v1", "Linear_regression v2" , \
+                                      "Linear_regression witt residuals" , "Exponential soothing", "AR", "MA",  "ARIMA", "SARIMA" ]
                              })
 ```
 
@@ -653,6 +1010,39 @@ plt.show()
 ```python
 plt.title("Compare models by MAE")
 sns.barplot(data=models_metric, x="MAE", y="Model")
+plt.show()
+```
+
+# Compare models that predicts all test set at once
+
+```python
+models_metric_all_test = pd.DataFrame({"MSE":[b_mse, b12_mse, b22_mse, b32_mse, lr1_mse, es2_mse, ar1_mse, ma1_mse, i1_mse, si1_mse],
+                            "RMSE": [b_rmse, b12_rmse, b22_rmse, b32_rmse, lr1_rmse, es2_rmse, ar1_rmse, ma1_rmse, i1_rmse, si1_rmse],
+                            "MAE": [b_mae, b12_mae, b22_mae, b32_mae, lr1_mae, es2_mae, ar1_mae, ma1_mae, i1_mae, si1_mae],
+                             "Model":["Last_value", "Linear_regression v0", "Linear_regression v1", "Linear_regression v2" , \
+                                     "Linear_regression witt residuals" , "Exponential soothing", "AR", "MA",  "ARIMA", "SARIMA" ]
+                             })
+```
+
+```python
+models_metric_all_test
+```
+
+```python
+plt.title("Compare models by MSE")
+sns.barplot(data=models_metric_all_test, x="MSE", y="Model")
+plt.show()
+```
+
+```python
+plt.title("Compare models by RMSE")
+sns.barplot(data=models_metric_all_test, x="RMSE", y="Model")
+plt.show()
+```
+
+```python
+plt.title("Compare models by MAE")
+sns.barplot(data=models_metric_all_test, x="MAE", y="Model")
 plt.show()
 ```
 
