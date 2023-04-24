@@ -18,6 +18,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from scipy.stats import levene, shapiro, ttest_ind
+from sklearn.cluster import KMeans
 from itertools import chain
 
 from statsmodels.graphics.gofplots import qqplot
@@ -102,6 +103,12 @@ def check_variance_homogeneity(group1, group2, name = None):
 ```
 
 ```python
+def check_ttest_ind_value(group1, group2):
+    _, pvalue = ttest_ind(group1, group2, equal_var = False)
+    return "not likely" if pvalue <0.05 else "likely"
+```
+
+```python
 def check_ttest_ind(group1, group2, equal_var = True, name = None):
     print_line()
     print("Running T-test")
@@ -111,6 +118,11 @@ def check_ttest_ind(group1, group2, equal_var = True, name = None):
         print(f"Reject null hypothesis >> Difference for {name} is not likely to be random")
     else:
         print(f"Fail to reject null hypothesis >> Difference for {name} is likely due to random")
+```
+
+```python
+def mean_value(research, control):
+    return  research.mean() - control.mean()
 ```
 
 ```python
@@ -247,16 +259,16 @@ compare_two_groups(df_sum[s_research_index], df_sum[s_control_index], "SUM7_DIFF
 # Medicine taken comparision
 
 ```python
-compared_columns = ['Med1','Med2', 'Med7']
+med_compared_columns = ['Med1','Med2', 'Med7']
 ```
 
 ```python
-print_NA_count(df, compared_columns)
+print_NA_count(df, med_compared_columns)
 ```
 
 ```python
-df_meds = df.dropna(subset=compared_columns)
-for col in compared_columns:
+df_meds = df.dropna(subset=med_compared_columns)
+for col in med_compared_columns:
     df_meds[col] = df_meds[col].str.extract('(\d+)').astype(int)
 
 ```
@@ -278,8 +290,74 @@ compare_two_groups(df_meds[df_meds_r_index], df_meds[df_meds_c_index], "Med2", "
 compare_two_groups(df_meds[df_meds_r_index], df_meds[df_meds_c_index], "Med2", "Meds taken 7 day")
 ```
 
+# Control group - compare by operator
+
+```python
+prepared_control = df_control.dropna(subset=["Operator", "VAS1", "VAS2", "VAS7", "Med1", "Med2", "Med7"])
+for col in med_compared_columns:
+    prepared_control[col] = prepared_control[col].str.extract('(\d+)').astype(int)
+```
+
+```python
+statistics_vas_by_operator = prepared_control.groupby("Operator")[["VAS1", "VAS2", "VAS7"]].sum()
+statistics_meds_by_operator =  prepared_control.groupby("Operator")[[ "Med1", "Med2", "Med7"]].sum()
+```
+
+```python
+statistics_vas_by_operator.plot.bar()
+statistics_meds_by_operator.plot.bar()
+plt.show()
+```
+
+```python
+statistics_sum_by_operator = prepared_control.groupby("Operator")[["Sum0", "Sum2", "Sum2"]].sum()
+statistics_mmo_by_operator =  prepared_control.groupby("Operator")[[ "MMO0", "MMO2", "MMO7"]].sum()
+```
+
+```python
+statistics_sum_by_operator.plot.bar()
+statistics_mmo_by_operator.plot.bar()
+plt.show()
+```
+
 # Cluster people and compare
 
 ```python
-#TBD
+n_clusters = 5
+features_columns = ["Wiek", "Sum0", "MMO0"]
+df_clustered = df.dropna(subset=features_columns)
+
+features_subset = df_clustered[features_columns]
+kmeans = KMeans(n_clusters=n_clusters, init='k-means++', random_state= 42, n_init="auto")  
+
+groups =  kmeans.fit_predict(features_subset) 
+df_clustered.insert(loc=1, column="Group", value=groups)
+for col in med_compared_columns:
+    df_clustered[col] = df_clustered[col].str.extract('(\d+)').astype(int)
+```
+
+```python
+def select_res(df_sorce, group):
+    return df_sorce[(df_sorce.EXPERIMENT == 1) & (df_sorce.Group == group)]
+
+def select_control(df_sorce, group):
+    return df_sorce[(df_sorce.EXPERIMENT == 0) & (df_sorce.Group == group)]
+```
+
+```python
+stats = df_clustered.value_counts(['Group']).sort_index().to_frame('Count')
+```
+
+```python
+for i in stats.index:
+    research = select_res(df_clustered, i)
+    control =  select_control(df_clustered, i)
+    for col in ["Sum2", "Sum7", "MMO2", "MMO7", "VAS1", "VAS2", "VAS7", "Med1", "Med2", "Med7"]:
+        stats.at[i, col+"_mean_diff"] = mean_value(research[col], control[col])
+        stats.at[i, col+"_sign"] = check_ttest_ind_value(research[col], control[col])
+
+```
+
+```python
+stats.transpose().sort_index()
 ```

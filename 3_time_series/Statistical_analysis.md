@@ -43,14 +43,6 @@ from scalecast.auxmodels import auto_arima
 <!-- #endregion -->
 
 ```python
-
-```
-
-<!-- #region tags=[] -->
-# Read and view data
-<!-- #endregion -->
-
-```python
 sns.set_theme()
 %matplotlib inline
 ```
@@ -311,8 +303,6 @@ def fit_linear_regression_with_lag_of_12_diff(dataframe, split, verbose=False):
 ```
 
 ```python
-=======
->>>>>>> Stashed changes
 def fit_model_arima(order, dataframe, split, method=None, verbose=False):
     model_fit = []
     predictions =  []
@@ -396,14 +386,9 @@ def split_train_test_by_date(df_to_split, split_date):
     return train_data, test_data
 ```
 
-<<<<<<< Updated upstream
-### Metrics and plots
-=======
 <!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
 ### Metrics and plots
 <!-- #endregion -->
->>>>>>> Stashed changes
-
 ```python
 def get_metrics_for_df(test_data, predictions, col='Num_Passengers'):
     return get_metrics(test_data[col], predictions[col])
@@ -517,9 +502,7 @@ lr_mse, lr_rmse, lr_mae = get_metrics(lr_test_data.values, lr_predictons)
 print_metrics(lr_mse, lr_rmse, lr_mae)
 ```
 
-<<<<<<< Updated upstream
 ### Linear regression a1 *xt + a2*xt-12 +b
-=======
 <!-- #region tags=[] -->
 #### Predict all test at once
 <!-- #endregion -->
@@ -574,8 +557,6 @@ def fit_linear_regression_with_12_lag(dataframe, split, verbose=False):
     
     return model_fit, predictions_df
 ```
->>>>>>> Stashed changes
-
 ```python
 _, b1_test_data, b1_split_date = split_train_test(df, 0.70)
 _,b1_predictons = fit_linear_regression_with_12_lag(df, b1_split_date)
@@ -585,9 +566,11 @@ b1_mse, b1_rmse, b1_mae = get_metrics(b1_test_data.values, b1_predictons)
 print_metrics(b1_mse, b1_rmse, b1_mae)
 ```
 
-<<<<<<< Updated upstream
+<!-- #region tags=[] -->
 ### Linear regression  a1 *xt + a2*(xt-12 - xt) +b
-=======
+
+<!-- #endregion -->
+
 #### Predict all test at once
 
 ```python
@@ -658,8 +641,6 @@ def fit_linear_regression_with_diff_of_12_lag(dataframe, split, verbose=False):
     
     return model_fit, predictions_df
 ```
->>>>>>> Stashed changes
-
 ```python
 _, b2_test_data, b2_split_date = split_train_test(df, 0.70)
 _,b2_predictons = fit_linear_regression_with_diff_of_12_lag(df, b2_split_date)
@@ -669,9 +650,9 @@ b2_mse, b2_rmse, b2_mae = get_metrics(b2_test_data.values, b2_predictons)
 print_metrics(b2_mse, b2_rmse, b2_mae)
 ```
 
-<<<<<<< Updated upstream
 ### Linear regression a1 *xt + a2*(xt-11 - xt-12) +b
-=======
+
+
 #### Predict all test at once
 
 ```python
@@ -744,8 +725,6 @@ def fit_linear_regression_with_lag_of_12_diff(dataframe, split, verbose=False):
     
     return model_fit, predictions_df
 ```
->>>>>>> Stashed changes
-
 ```python
 _, b3_test_data, b3_split_date = split_train_test(df, 0.70)
 _, b3_predictons = fit_linear_regression_with_lag_of_12_diff(df, b3_split_date)
