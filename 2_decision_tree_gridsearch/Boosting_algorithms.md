@@ -6,7 +6,7 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.14.0
+      jupytext_version: 1.14.4
   kernelspec:
     display_name: Python 3 (ipykernel)
     language: python
@@ -60,13 +60,13 @@ def balance_undersample(df, tagetName='Survived'):
     data =  pd.concat([survived_part, not_survived_sample], ignore_index=True)
     return data
 
-def remove_over_95th(df, columns=[]):
-    copy = df.copy()
+def remove_outliers(df, columns=[]):
+    df_copy = df.copy()
     for col in columns:
-        lower = copy[col].quantile(0.02)
-        higher = copy[col].quantile(0.98)
-        copy = copy[(copy[col]>=lower) & (copy[col]<=higher)]
-    return copy
+        lower = df_copy[col].quantile(0.02)
+        higher = df_copy[col].quantile(0.98)
+        df_copy = df_copy[(df_copy[col]>=lower) & (df_copy[col]<=higher)]
+    return df_copy
 ```
 
 ```python
@@ -80,7 +80,7 @@ def print_scores(observed, predicted):
 ```python
 train, test = train_test_split(titanic_dataset, test_size=0.2, random_state=123)
 train_balanced = balance_undersample(train)
-train_copy = remove_over_95th(train_balanced, columns=['Age', 'Fare'])
+train_copy = remove_outliers(train_balanced, columns=['Age', 'Fare'])
 
 X,Y = exctract_target(train_copy)
 x_test, y_test = exctract_target(test)
@@ -220,15 +220,44 @@ print_scores(y_test, y_pred_grad)
 # XGBoost
 
 ```python
-xgd_clf = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
+xgb_clf = XGBClassifier(use_label_encoder=False, eval_metric='mlogloss')
 ```
 
 ```python
-xgd_clf.fit(X_preprocessed, Y)
+xgb_clf.fit(X_preprocessed, Y)
 ```
 
 ```python
-y_pred_xgb = xgd_clf.predict(x_test_processed)
+y_pred_xgb = xgb_clf.predict(x_test_processed)
+print_scores(y_test, y_pred_xgb)
+```
+
+```python
+xgb_param_grid = dict(
+    max_depth = [2,4,6]
+)
+
+xgb_grid_search = GridSearchCV(xgb_clf, xgb_param_grid, n_jobs=-1)
+```
+
+```python
+EXPERIMENT_NAME = 'mlflow-xgb_boost'
+EXPERIMENT_ID = mlflow.set_experiment(EXPERIMENT_NAME).name
+mlflow.sklearn.autolog(log_models=False, silent=True, max_tuning_runs=500)
+with mlflow.start_run() as run:
+    xgb_grid_search.fit(X_preprocessed, Y)
+```
+
+```python
+xgb_best = xgb_grid_search.best_estimator_
+```
+
+```python
+xgb_best
+```
+
+```python
+y_pred_xgb= xgb_best.predict(x_test_processed)
 print_scores(y_test, y_pred_xgb)
 ```
 
