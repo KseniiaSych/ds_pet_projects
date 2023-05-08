@@ -14,15 +14,20 @@ jupyter:
 ---
 
 ```python
+from itertools import chain
+
+import numpy as np
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
-from scipy.stats import levene, shapiro, ttest_ind
-from sklearn.cluster import KMeans
-from itertools import chain
 
+from scipy.stats import levene, shapiro, ttest_ind, norm
+from sklearn.cluster import KMeans
+from sklearn.metrics import silhouette_score
+from sklearn import preprocessing
+
+from kneed import KneeLocator
 from statsmodels.graphics.gofplots import qqplot
-from scipy.stats import norm
 ```
 
 ```python
@@ -143,11 +148,18 @@ def compare_two_groups(df1, df2, column, name):
 ```
 
 ```python
-def plot_violin(dataset, columns, defining_col, title):
+def plot_violin(dataset, columns, defining_col, title, split = True):   
     data_to_plot = pd.melt(dataset, value_vars=columns, id_vars=defining_col)
-    sns.violinplot(x='variable', y='value', hue=defining_col, data=data_to_plot, split=True)
+    sns.violinplot(x='variable', y='value', hue=defining_col, data=data_to_plot, split=split)
     plt.title(title)
     plt.show()
+```
+
+```python
+def preprocess_columnt_to_number(df, columns):
+    for col in columns:
+        df[col] = df[col].str.extract('(\d+)').astype(int)
+    return df
 ```
 
 <!-- #region tags=[] -->
@@ -268,9 +280,7 @@ print_NA_count(df, med_compared_columns)
 
 ```python
 df_meds = df.dropna(subset=med_compared_columns)
-for col in med_compared_columns:
-    df_meds[col] = df_meds[col].str.extract('(\d+)').astype(int)
-
+df_meds = preprocess_columnt_to_number(df_meds, med_compared_columns)
 ```
 
 ```python
@@ -278,7 +288,7 @@ df_meds
 ```
 
 ```python
-plot_violin(df_meds, compared_columns, "EXPERIMENT", "Compare Meds' taken")
+plot_violin(df_meds, med_compared_columns, "EXPERIMENT", "Compare Meds' taken")
 ```
 
 ```python
@@ -294,70 +304,202 @@ compare_two_groups(df_meds[df_meds_r_index], df_meds[df_meds_c_index], "Med2", "
 
 ```python
 prepared_control = df_control.dropna(subset=["Operator", "VAS1", "VAS2", "VAS7", "Med1", "Med2", "Med7"])
-for col in med_compared_columns:
-    prepared_control[col] = prepared_control[col].str.extract('(\d+)').astype(int)
+prepared_control =  preprocess_columnt_to_number(prepared_control, ["Med1", "Med2", "Med7"])
 ```
 
 ```python
-statistics_vas_by_operator = prepared_control.groupby("Operator")[["VAS1", "VAS2", "VAS7"]].sum()
-statistics_meds_by_operator =  prepared_control.groupby("Operator")[[ "Med1", "Med2", "Med7"]].sum()
+plot_violin(prepared_control, ["VAS1", "VAS2", "VAS7"], "Operator", "Compare VAS' by operator", False)
 ```
 
 ```python
-statistics_vas_by_operator.plot.bar()
-statistics_meds_by_operator.plot.bar()
-plt.show()
+plot_violin(prepared_control, ["Med1", "Med2", "Med7"], "Operator", "Compare Meds taken by operator", False)
 ```
 
 ```python
-statistics_sum_by_operator = prepared_control.groupby("Operator")[["Sum0", "Sum2", "Sum2"]].sum()
-statistics_mmo_by_operator =  prepared_control.groupby("Operator")[[ "MMO0", "MMO2", "MMO7"]].sum()
+prepared_control = prepared_control.assign(MMO2_DIFF = lambda x: (x.MMO2 - x.MMO0) / x.MMO0)
+prepared_control = prepared_control.assign(MMO7_DIFF = lambda x: (x.MMO7 - x.MMO0) / x.MMO0)
+prepared_control = prepared_control.assign(SUM2_DIFF = lambda x: (x.Sum2 - x.Sum0) / x.Sum0)
+prepared_control = prepared_control.assign(SUM7_DIFF = lambda x: (x.Sum7 - x.Sum0) / x.Sum0)
 ```
 
 ```python
-statistics_sum_by_operator.plot.bar()
-statistics_mmo_by_operator.plot.bar()
-plt.show()
+plot_violin(prepared_control, ["MMO2_DIFF", "MMO7_DIFF"], "Operator", "Compare MMO perentage difference", False)
+```
+
+```python
+plot_violin(prepared_control, ["SUM2_DIFF", "SUM7_DIFF"], "Operator", "Compare SUM perentage difference", False)
 ```
 
 # Cluster people and compare
 
 ```python
-n_clusters = 5
-features_columns = ["Wiek", "Sum0", "MMO0"]
-df_clustered = df.dropna(subset=features_columns)
+features_columns = ["VAS1", "VAS2","Med1", "Med2", "Operator"]
+columns_for_calculation = ["MMO2", "MMO0", "MMO7", "Sum2", "Sum0", "Sum7"]
 
-features_subset = df_clustered[features_columns]
-kmeans = KMeans(n_clusters=n_clusters, init='k-means++', random_state= 42, n_init="auto")  
+df_X = df[features_columns+columns_for_calculation]
+df_X.Operator = df_X.Operator.fillna("NA")
+df_X = df_X.dropna()
 
-groups =  kmeans.fit_predict(features_subset) 
-df_clustered.insert(loc=1, column="Group", value=groups)
-for col in med_compared_columns:
-    df_clustered[col] = df_clustered[col].str.extract('(\d+)').astype(int)
+df_X = df_X.assign(MMO2_DIFF = lambda x: (x.MMO2 - x.MMO0) / x.MMO0)
+df_X = df_X.assign(MMO7_DIFF = lambda x: (x.MMO7 - x.MMO0) / x.MMO0)
+df_X = df_X.assign(SUM2_DIFF = lambda x: (x.Sum2 - x.Sum0) / x.Sum0)
+df_X = df_X.assign(SUM7_DIFF = lambda x: (x.Sum7 - x.Sum0) / x.Sum0)
+df_X = df_X.drop(columns = columns_for_calculation)
+df_X = preprocess_columnt_to_number(df_X, ["Med1", "Med2"])
+
+operator_Y= df_X.Operator
+df_X = df_X.drop(columns = "Operator")
 ```
 
 ```python
-def select_res(df_sorce, group):
-    return df_sorce[(df_sorce.EXPERIMENT == 1) & (df_sorce.Group == group)]
-
-def select_control(df_sorce, group):
-    return df_sorce[(df_sorce.EXPERIMENT == 0) & (df_sorce.Group == group)]
+def normilize_dataframe(df):
+    x = df.values 
+    scaler = preprocessing.PowerTransformer()
+    x_scaled = scaler.fit_transform(x)
+    return pd.DataFrame(x_scaled, columns = df.columns)
 ```
 
 ```python
-stats = df_clustered.value_counts(['Group']).sort_index().to_frame('Count')
+df_X = normilize_dataframe(df_X)
 ```
 
 ```python
-for i in stats.index:
-    research = select_res(df_clustered, i)
-    control =  select_control(df_clustered, i)
-    for col in ["Sum2", "Sum7", "MMO2", "MMO7", "VAS1", "VAS2", "VAS7", "Med1", "Med2", "Med7"]:
-        stats.at[i, col+"_mean_diff"] = mean_value(research[col], control[col])
-        stats.at[i, col+"_sign"] = check_ttest_ind_value(research[col], control[col])
+df_X.head()
+```
 
+<!-- #region tags=[] -->
+## Find number of clusters
+<!-- #endregion -->
+
+```python
+def run_kmeans(df, k, random_state=42, init='k-means++'):
+    kmeans = KMeans(n_clusters=k, random_state=random_state, n_init="auto", init=init)
+    kmeans.fit(df)
+    return kmeans
 ```
 
 ```python
-stats.transpose().sort_index()
+def elbow_plot(df):
+    sse = {}  
+    for k in range(1, 20):
+        kmeans = run_kmeans(df, k)
+        sse[k] = kmeans.inertia_
+    
+    plt.title('Elbow plot for K selection')
+    plt.xlabel('k')
+    plt.ylabel('SSE')
+    sns.pointplot(x=list(sse.keys()),
+                 y=list(sse.values()))
+    plt.show()
+```
+
+```python
+elbow_plot(df_X)
+```
+
+```python
+def silhouette_score_plot(df, k_max=20):
+    silhouette_scores = [] 
+    k_range  =  range(2, k_max)
+    for k in k_range:
+        kmeans = run_kmeans(df, k)
+        silhouette_scores.append(silhouette_score(df, kmeans.labels_))
+    
+    fig, ax = plt.subplots()
+    ax.plot(k_range, silhouette_scores, 'bx-')
+    ax.set_title('Silhouette Score Method')
+    ax.set_xlabel('Number of clusters')
+    ax.set_ylabel('Silhouette Scores')
+    plt.xticks(k_range)
+    plt.tight_layout()
+    plt.show()
+```
+
+```python
+silhouette_score_plot(df_X)
+```
+
+```python
+def find_k(df):
+    sse = {}
+    for k in range(1, 20):
+        kmeans = run_kmeans(df, k)
+        sse[k] = kmeans.inertia_
+    
+    kn = KneeLocator(x=list(sse.keys()), 
+                 y=list(sse.values()), 
+                 curve='convex', 
+                 direction='decreasing')
+    return kn.knee
+```
+
+```python
+print(f"Knee recommended by algorithm - {find_k(df_X)}")
+```
+
+```python
+kmeans = run_kmeans(df_X, 3)
+df_clustered = df_X.assign(cluster=kmeans.labels_)
+```
+
+```python
+df_clustered
+```
+
+## Visualize results
+
+```python
+df_combine = df_clustered.assign(Operator=operator_Y.values)
+df_combine.groupby('cluster')['Operator'].agg(['unique'])
+```
+
+```python
+df_combine.groupby(['cluster','Operator']).size().unstack(level=1).plot(kind = 'bar')
+plt.title("Operators distribution by clusters")
+plt.show()
+```
+
+```python
+from sklearn.decomposition import PCA
+```
+
+```python
+cluster_colors = ['#b4d2b1', '#568f8b', '#1d4a60', '#cd7e59', '#ddb247', '#d15252']
+```
+
+```python
+pca_scaled_std = PCA(n_components=2, random_state=42)
+X_std_pca = pca_scaled_std.fit_transform(df_X)
+```
+
+```python
+ax = plt.subplot()
+y = df_clustered.cluster
+y_values = df_clustered.cluster.unique()
+for l, c, m in zip(y_values, cluster_colors[0:len(y_values)], ('^', 's', 'o', 'P', 'D')):
+    ax.scatter(X_std_pca[y == l, 0],
+                X_std_pca[y == l, 1],
+                color=c,
+                label='cluster %s' % l,
+                alpha=0.9,
+                marker=m
+                )
+ax.set_title("PCA Visualization")
+plt.show()
+```
+
+```python
+ax = plt.subplot()
+y = operator_Y
+y_values =y.unique()
+for l, c, m in zip(y_values, cluster_colors[0:len(y_values)], ('^', 's', 'o', 'P', 'D')):
+    ax.scatter(X_std_pca[y == l, 0],
+                X_std_pca[y == l, 1],
+                color=c,
+                label='cluster %s' % l,
+                alpha=0.9,
+                marker=m
+                )
+ax.set_title("PCA Visualization")
+plt.show()
 ```
