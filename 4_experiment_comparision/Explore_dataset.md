@@ -15,6 +15,7 @@ jupyter:
 
 ```python
 from itertools import chain
+import os
 
 import numpy as np
 import pandas as pd
@@ -28,6 +29,8 @@ from sklearn import preprocessing
 
 from kneed import KneeLocator
 from statsmodels.graphics.gofplots import qqplot
+from sklearn.decomposition import PCA
+import pacmap
 ```
 
 ```python
@@ -337,18 +340,19 @@ features_columns = ["VAS1", "VAS2","Med1", "Med2", "Operator"]
 columns_for_calculation = ["MMO2", "MMO0", "MMO7", "Sum2", "Sum0", "Sum7"]
 
 df_X = df[features_columns+columns_for_calculation]
-df_X.Operator = df_X.Operator.fillna("NA")
 df_X = df_X.dropna()
 
 df_X = df_X.assign(MMO2_DIFF = lambda x: (x.MMO2 - x.MMO0) / x.MMO0)
-df_X = df_X.assign(MMO7_DIFF = lambda x: (x.MMO7 - x.MMO0) / x.MMO0)
 df_X = df_X.assign(SUM2_DIFF = lambda x: (x.Sum2 - x.Sum0) / x.Sum0)
-df_X = df_X.assign(SUM7_DIFF = lambda x: (x.Sum7 - x.Sum0) / x.Sum0)
 df_X = df_X.drop(columns = columns_for_calculation)
 df_X = preprocess_columnt_to_number(df_X, ["Med1", "Med2"])
 
 operator_Y= df_X.Operator
 df_X = df_X.drop(columns = "Operator")
+```
+
+```python
+df_X.head()
 ```
 
 ```python
@@ -438,7 +442,7 @@ print(f"Knee recommended by algorithm - {find_k(df_X)}")
 ```
 
 ```python
-kmeans = run_kmeans(df_X, 3)
+kmeans = run_kmeans(df_X, 5)
 df_clustered = df_X.assign(cluster=kmeans.labels_)
 ```
 
@@ -460,11 +464,7 @@ plt.show()
 ```
 
 ```python
-from sklearn.decomposition import PCA
-```
-
-```python
-cluster_colors = ['#b4d2b1', '#568f8b', '#1d4a60', '#cd7e59', '#ddb247', '#d15252']
+cluster_colors = ['#0000FF', '#FF4040', '#7FFF00', '#006400', '#9932CC', '#FF1493']
 ```
 
 ```python
@@ -484,7 +484,7 @@ for l, c, m in zip(y_values, cluster_colors[0:len(y_values)], ('^', 's', 'o', 'P
                 alpha=0.9,
                 marker=m
                 )
-ax.set_title("PCA Visualization")
+ax.set_title("PCA Visualization by cluster")
 plt.show()
 ```
 
@@ -500,6 +500,31 @@ for l, c, m in zip(y_values, cluster_colors[0:len(y_values)], ('^', 's', 'o', 'P
                 alpha=0.9,
                 marker=m
                 )
-ax.set_title("PCA Visualization")
+ax.set_title("PCA Visualization by operators")
 plt.show()
+```
+
+```python
+os.environ["_RANDOM_STATE"] = "42"
+embedding = pacmap.PaCMAP(n_components=2)
+X_std_pacmap = embedding.fit_transform(df_X.to_numpy(), init="pca")
+ax = plt.subplot()
+
+y = df_clustered.cluster
+y_values = df_clustered.cluster.unique()
+
+for l, c, m in zip(y_values, cluster_colors[0:len(y_values)], ('^', 's', 'o')):
+    ax.scatter(X_std_pacmap[y == l, 0],
+                X_std_pacmap[y == l, 1],
+                color=c,
+                label='cluster %s' % l,
+                alpha=0.9,
+                marker=m
+                )
+ax.set_title("PACMAP Visualization")
+plt.show()
+```
+
+```python
+
 ```

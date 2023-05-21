@@ -17,6 +17,7 @@ jupyter:
 import pandas as pd
 import numpy as np
 import seaborn as sns
+import plotly.express as px
 import matplotlib.pyplot as plt
 
 from time import time
@@ -39,8 +40,10 @@ from sklearn.model_selection import train_test_split
 
 from scalecast.Forecaster import Forecaster
 from scalecast.auxmodels import auto_arima
+import pmdarima as pm
 
 from more_itertools import batched
+import warnings; warnings.simplefilter('ignore')
 ```
 
 <!-- #region tags=[] -->
@@ -72,9 +75,30 @@ df.describe()
 ```
 
 ```python
+plt.figure(figsize=(10,6))
 plt.title("Amount of air passagers by month")
 sns.lineplot(x="Month", y="Num_Passengers", data=df)
 plt.show()
+```
+
+```python
+piv_index = getattr(df.index, 'month')
+piv_season = getattr(df.index, 'year')
+    
+piv = pd.pivot_table(df, index=piv_index, columns=piv_season, values='Num_Passengers')
+ax =piv.plot(figsize=(12,8), title="Amount of air passagers by month.Seasonal plot")
+ax.set_xticks(range(1,13))
+plt.show()
+```
+
+```python
+df_circular_season = df.copy()
+df_circular_season['month'] = getattr(df.index, 'month')
+df_circular_season['month_map'] = getattr(df.index, 'month')*(380/12)
+df_circular_season['year'] = getattr(df.index, 'year')
+fig = px.line_polar(df_circular_season, r="Num_Passengers", theta="month_map", color="year", line_close=True,
+                    color_discrete_sequence=px.colors.sequential.Plasma_r)
+fig.show()
 ```
 
 <!-- #region tags=[] jp-MarkdownHeadingCollapsed=true tags=[] -->
@@ -82,7 +106,7 @@ plt.show()
 <!-- #endregion -->
 
 ```python
-acf_plot = plot_acf(df.Num_Passengers, lags=20)
+acf_plot = plot_acf(df.Num_Passengers, lags=40)
 ```
 
 ```python
@@ -415,6 +439,87 @@ plot_test_with_predictions(test_data, predictons, "Prediction is last known valu
 metrics = list(get_metrics(test_data.values, predictons))
 print_metrics(metrics)
 models_metrics = save_metrics(models_metrics, previous_model_name, "Predict_all_test", metrics)
+```
+
+<!-- #region tags=[] -->
+#### Rolling presitions 12 months
+<!-- #endregion -->
+
+```python
+def predict_previous_value_rolling_12(dataframe, split):
+    predictions = pd.DataFrame()
+    prediction_range = list(pd.date_range(split, dataframe.index[-1], freq='MS'))
+
+    for test_split in batched(prediction_range, 12):
+        train = get_train_data(dataframe, test_split) 
+        test = dataframe[dataframe.index.isin(test_split)]
+        prediction = predict_previous_value_for_test(train,test)
+        predictions = pd.concat([predictions, prediction])
+    return predictions
+```
+
+```python
+_, test_data, split_date = split_train_test(df, 0.70)
+predictons = predict_previous_value_rolling_12(df, split_date)
+plot_test_with_predictions(test_data, predictons, "Prediction is last known value")
+metrics = list(get_metrics(test_data.values, predictons))
+print_metrics(metrics)
+models_metrics = save_metrics(models_metrics, previous_model_name, "Rolling_prediction_12", metrics)
+```
+
+<!-- #region tags=[] -->
+#### Rolling prediction
+<!-- #endregion -->
+
+```python
+def predict_previous_value_rolling(dataframe, split):
+    return dataframe[split + relativedelta(months=-1): ][:-1].shift(1, freq='M')
+```
+
+```python
+_, test_data, split_date = split_train_test(df, 0.70)
+predictons = predict_previous_value_rolling(df, split_date)
+plot_test_with_predictions(test_data, predictons, "Prediction is last known value")
+metrics = list(get_metrics(test_data.values, predictons))
+print_metrics(metrics)
+models_metrics = save_metrics(models_metrics, previous_model_name, "Rolling_prediction_1", metrics)
+```
+
+<!-- #region tags=[] -->
+#### Comparision
+<!-- #endregion -->
+
+```python
+compare_model_tests(previous_model_name)
+```
+
+```python
+avg_model_name = "Average_method"
+```
+
+<!-- #region tags=[] -->
+#### Predict all test at once
+<!-- #endregion -->
+
+```python
+def predict_avg_value_for_test(train, test):
+    predictions = pd.DataFrame().reindex_like(test)
+    predictions['Num_Passengers'] = train['Num_Passengers'].mean()
+    return predictions
+```
+
+```python
+train_data.Num_Passengers.mean()
+```
+
+```python
+train_data, test_data, _ = split_train_test(df, 0.70)
+predictons = predict_avg_value_for_test(train_data, test_data)
+plot_test_with_predictions(test_data, predictons, "Prediction is last known value all test")
+
+metrics = list(get_metrics(test_data.values, predictons))
+print_metrics(metrics)
+models_metrics = save_metrics(models_metrics, avg_model_name, "Predict_all_test", metrics)
 ```
 
 <!-- #region tags=[] -->
@@ -962,6 +1067,23 @@ compare_model_tests(es_model_name)
 ar_model_name = "AR"
 ```
 
+```python
+pm.auto_arima(df.Num_Passengers,
+    start_p=1,
+    start_q=0,
+    max_p=20,
+    max_q=0,
+    max_order = None,
+    maxiter = 500,
+    seasonal=False,
+    trace=True,
+    error_action='ignore',
+    stepwise =False,
+    scoring='mse',
+    information_criterion ='aic',
+    method = 'nm')
+```
+
 ### Predict all test at once
 
 ```python
@@ -969,7 +1091,7 @@ train_data, test_data, _ = split_train_test(df, 0.7)
 ```
 
 ```python
-ar_model = ARIMA(train_data, order=(2,1,0))
+ar_model = ARIMA(train_data, order=(14,1,0))
 ar_fit = ar_model.fit()
 ```
 
@@ -990,7 +1112,7 @@ models_metrics = save_metrics(models_metrics, ar_model_name, "Predict_all_test",
 
 ```python
 _, test_data, split = split_train_test(df, 0.70)
-models, predictions = fit_model_arima((2,1, 0), df, split)
+models, predictions = fit_model_arima((14,1,0), df, split, method = 'statespace')
 plot_test_with_predictions(test_data, predictions, "Predict with AR model")
 
 metrics = list(get_metrics(test_data.values, predictions))
@@ -1006,7 +1128,7 @@ model_stats(models[-1])
 
 ```python
 _, test_data, split = split_train_test(df, 0.70)
-models, predictions = fit_model_arima((2,1, 0), df, split)
+models, predictions = fit_model_arima((14,1,0), df, split)
 plot_test_with_predictions(test_data, predictions, "Predict with AR model")
 
 metrics = list(get_metrics(test_data.values, predictions))
@@ -1028,11 +1150,28 @@ compare_model_tests(ar_model_name)
 ma_model_name = "MA"
 ```
 
+```python
+pm.auto_arima(df.Num_Passengers,
+    start_p=0,
+    start_q=1,
+    max_p=0,
+    max_q=20,
+    max_order = None,
+    maxiter = 500,
+    seasonal=False,
+    trace=True,
+    error_action='ignore',
+    stepwise =False,
+    scoring='mse',
+    information_criterion ='aic',
+    method = 'bfgs')
+```
+
 ### Rolling predictions
 
 ```python
 _, test_data, split = split_train_test(df, 0.70)
-models, predictions = fit_model_arima((0,1,1), df, split)
+models, predictions = fit_model_arima((0,1,12), df, split)
 plot_test_with_predictions(test_data, predictions, "Predict with MA model")
 
 metrics = list(get_metrics(test_data.values, predictions))
@@ -1050,7 +1189,7 @@ models[-1].summary()
 
 ```python
 _, test_data, split = split_train_test(df, 0.70)
-models, predictions = fit_model_arima((0,1,1), df, split, batch=12)
+models, predictions = fit_model_arima((0,1,12), df, split, batch=12)
 plot_test_with_predictions(test_data, predictions, "Predict with AR model")
 
 metrics = list(get_metrics(test_data.values, predictions))
@@ -1062,16 +1201,12 @@ models_metrics = save_metrics(models_metrics, ma_model_name, "Rolling_prediction
 
 ```python
 train_data, test_data, _ = split_train_test(df, 0.70)
-models, predictions = fit_model_arima_all_test((0,1,1), train_data,test_data)
+models, predictions = fit_model_arima_all_test((0,1,12), train_data,test_data)
 plot_test_with_predictions(test_data, predictions, "Predict with MA model")
 
 metrics = list(get_metrics(test_data.values, predictions.values))
 print_metrics(metrics)
 models_metrics = save_metrics(models_metrics, ma_model_name, "Predict_all_test", metrics)
-```
-
-```python
-train_data.Num_Passengers[-12:].mean()
 ```
 
 ### Comparision
@@ -1088,11 +1223,28 @@ compare_model_tests(ma_model_name)
 arima_model_name = "ARIMA"
 ```
 
+```python
+pm.auto_arima(df.Num_Passengers,
+    start_p=1,
+    start_q=1,
+    max_p=20,
+    max_q=20,
+    max_order = None,
+    maxiter = 500,
+    seasonal=False,
+    trace=True,
+    error_action='ignore',
+    stepwise =False,
+    scoring='mse',
+    information_criterion ='aic',
+    method = 'nm')
+```
+
 ### Rolling prediction
 
 ```python
 _, test_data, split = split_train_test(df, 0.70)
-models, predictions = fit_model_arima((2,1,1), df, split)
+models, predictions = fit_model_arima((8,1,8), df, split)
 plot_test_with_predictions(test_data, predictions, "Predict with ARIMA model")
 
 metrics = list(get_metrics(test_data.values, predictions))
@@ -1108,7 +1260,7 @@ models[-1].summary()
 
 ```python
 _, test_data, split = split_train_test(df, 0.70)
-models, predictions = fit_model_arima((2,1,1), df, split, batch=12)
+models, predictions = fit_model_arima((8,1,8), df, split, batch=12)
 plot_test_with_predictions(test_data, predictions, "Predict with AR model")
 
 metrics = list(get_metrics(test_data.values, predictions))
@@ -1120,7 +1272,7 @@ models_metrics = save_metrics(models_metrics, arima_model_name, "Rolling_predict
 
 ```python
 train_data, test_data, _ = split_train_test(df, 0.70)
-models, predictions = fit_model_arima_all_test((2,1,1), train_data, test_data)
+models, predictions = fit_model_arima_all_test((8,1,8), train_data, test_data)
 plot_test_with_predictions(test_data, predictions, "Predict with ARIMA model")
 
 metrics = list(get_metrics(test_data.values, predictions.values))
@@ -1142,13 +1294,37 @@ compare_model_tests(arima_model_name)
 sarimax_model_name = "SARIMAX"
 ```
 
+```python
+pm.auto_arima(df.Num_Passengers,
+    start_p=1,
+    start_q=1,
+    max_p=20,
+    max_q=20,
+    start_P = 1,
+    start_D = 1,
+    start_Q = 1,
+    max_P = 20,
+    max_D = 20,
+    max_Q = 20,
+    m=12,
+    max_order = None,
+    maxiter = 800,
+    random =True,
+    seasonal=True,
+    trace=True,
+    error_action='ignore',
+    scoring='mse',
+    information_criterion ='aic',
+    method = 'bfgs')
+```
+
 <!-- #region tags=[] -->
 ### Rolling prediction
 <!-- #endregion -->
 
 ```python
 _, test_data, split = split_train_test(df, 0.70)
-models, predictions = fit_model_sarimax((1, 1, 0), (0,1,0,12), df, split)
+models, predictions = fit_model_sarimax((0,1,1),(2,1,1, 12), df, split)
 plot_test_with_predictions(test_data, predictions, "Predict with SARIMAX model")
 
 metrics = list(get_metrics(test_data.values, predictions))
@@ -1160,7 +1336,7 @@ models_metrics = save_metrics(models_metrics, sarimax_model_name, "Rolling_predi
 
 ```python
 _, test_data, split = split_train_test(df, 0.70)
-models, predictions = fit_model_sarimax((1, 1, 0), (0,1,0,12), df, split,  batch = 12)
+models, predictions = fit_model_sarimax((0,1,1),(2,1,1, 12), df, split,  batch = 12)
 plot_test_with_predictions(test_data, predictions, "Predict with SARIMAX model")
 
 metrics = list(get_metrics(test_data.values, predictions))
@@ -1172,7 +1348,7 @@ models_metrics = save_metrics(models_metrics, sarimax_model_name, "Rolling_predi
 
 ```python
 train_data, test_data, _ = split_train_test(df, 0.70)
-models, predictions = fit_model_sarimax_all_test((1, 1, 0), (0,1,0,12), train_data, test_data)
+models, predictions = fit_model_sarimax_all_test((0,1,1),(2,1,1, 12), train_data, test_data)
 plot_test_with_predictions(test_data, predictions, "Predict with SARIMA model")
 
 metrics = list(get_metrics(test_data.values, predictions))
@@ -1190,26 +1366,31 @@ compare_model_tests(sarimax_model_name)
 # Compare models that predicts one value at a time
 <!-- #endregion -->
 
+```python
+n_nest_models = 7
+```
+
+```python
+for metric in METRICS_NAMES:
+    models_metrics[metric] = pd.to_numeric(models_metrics[metric])
+```
+
 ```python tags=[]
 rolling_prediction = models_metrics[models_metrics["TestName"]=="Rolling_prediction_1"]
 ```
 
 ```python tags=[]
-plt.title("Compare models by MSE")
-sns.barplot(data=rolling_prediction, x="MSE", y="Model")
-plt.show()
+for metric in METRICS_NAMES:
+    plt.title(f"Compare models by {metric}")
+    sns.barplot(data=rolling_prediction, x=metric, y="Model")
+    plt.show()
+```
 
-plt.title("Compare models by RMSE")
-sns.barplot(data=rolling_prediction, x="RMSE", y="Model")
-plt.show()
-
-plt.title("Compare models by MAE")
-sns.barplot(data=rolling_prediction, x="MAE", y="Model")
-plt.show()
-
-plt.title("Compare models by MAPE")
-sns.barplot(data=rolling_prediction, x="MAPE", y="Model")
-plt.show()
+```python
+for metric in METRICS_NAMES:
+    plt.title(f"Compare {n_nest_models} best models by {metric}")
+    sns.barplot(data=rolling_prediction.nsmallest(n_nest_models, metric), x=metric, y="Model")
+    plt.show()
 ```
 
 <!-- #region tags=[] -->
@@ -1221,21 +1402,17 @@ rolling_prediction_year = models_metrics[models_metrics["TestName"]=="Rolling_pr
 ```
 
 ```python
-plt.title("Compare models by MSE")
-sns.barplot(data=rolling_prediction_year, x="MSE", y="Model")
-plt.show()
+for metric in METRICS_NAMES:
+    plt.title(f"Compare models by {metric}")
+    sns.barplot(data=rolling_prediction_year, x=metric, y="Model")
+    plt.show()
+```
 
-plt.title("Compare models by RMSE")
-sns.barplot(data=rolling_prediction_year, x="RMSE", y="Model")
-plt.show()
-
-plt.title("Compare models by MAE")
-sns.barplot(data=rolling_prediction_year, x="MAE", y="Model")
-plt.show()
-
-plt.title("Compare models by MAPE")
-sns.barplot(data=rolling_prediction_year, x="MAPE", y="Model")
-plt.show()
+```python
+for metric in METRICS_NAMES:
+    plt.title(f"Compare {n_nest_models} best models by {metric}")
+    sns.barplot(data=rolling_prediction_year.nsmallest(n_nest_models, metric), x=metric, y="Model")
+    plt.show()
 ```
 
 # Compare models that predicts all test 
@@ -1245,21 +1422,17 @@ all_test_metrics = models_metrics[models_metrics["TestName"]=="Predict_all_test"
 ```
 
 ```python
-plt.title("Compare models by MSE")
-sns.barplot(data=all_test_metrics, x="MSE", y="Model")
-plt.show()
+for metric in METRICS_NAMES:
+    plt.title(f"Compare models by {metric}")
+    sns.barplot(data=all_test_metrics, x=metric, y="Model")
+    plt.show()
+```
 
-plt.title("Compare models by RMSE")
-sns.barplot(data=all_test_metrics, x="RMSE", y="Model")
-plt.show()
-
-plt.title("Compare models by MAE")
-sns.barplot(data=all_test_metrics, x="MAE", y="Model")
-plt.show()
-
-plt.title("Compare models by MAPE")
-sns.barplot(data=all_test_metrics, x="MAPE", y="Model")
-plt.show()
+```python
+for metric in METRICS_NAMES:
+    plt.title(f"Compare {n_nest_models} best models by {metric}")
+    sns.barplot(data=all_test_metrics.nsmallest(n_nest_models, metric), x=metric, y="Model")
+    plt.show()
 ```
 
 <!-- #region tags=[] -->
