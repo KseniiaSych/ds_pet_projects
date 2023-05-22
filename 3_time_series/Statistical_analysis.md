@@ -42,7 +42,6 @@ from scalecast.Forecaster import Forecaster
 from scalecast.auxmodels import auto_arima
 import pmdarima as pm
 
-from more_itertools import batched
 import warnings; warnings.simplefilter('ignore')
 ```
 
@@ -265,9 +264,17 @@ def split_train_test_by_date(df_to_split, split_date):
 ```
 
 ```python
+# get all train dates before test or first date in test
 def get_train_data(df, date):
     date_split =  date[0] if isinstance(date, list) else date
     return df[:date_split - timedelta(days=1)]
+```
+
+```python
+def chunks(l, n):
+    for i in range(0, len(l)//n):
+        s=i*n
+        yield l[s:s+n]
 ```
 
 <!-- #region jp-MarkdownHeadingCollapsed=true tags=[] -->
@@ -279,7 +286,10 @@ def get_metrics_for_df(test_data, predictions, col='Num_Passengers'):
 ```
 
 ```python
-def get_metrics(test_data, predictions):
+def get_metrics(test_all, predictions_all):
+    size = min(len(test_all), len(predictions_all))
+    test_data = test_all[:size]
+    predictions = predictions_all[:size]
     mse = mean_squared_error(test_data, predictions)  
     rmse = mean_squared_error(test_data, predictions, squared=False)          
     mae = mean_absolute_error(test_data, predictions)
@@ -335,7 +345,7 @@ def fit_model_arima(order, dataframe, split, method=None, batch=1):
     predictions =  []
     prediction_range = list(pd.date_range(split, dataframe.index[-1], freq='MS'))
     
-    for test_dates in batched(prediction_range, batch):
+    for test_dates in chunks(prediction_range, batch):
         y_train = get_train_data(dataframe, test_dates)
         model = ARIMA(y_train, order = order)
         fit = model.fit(method=method)
@@ -361,7 +371,7 @@ def fit_model_sarimax(order, seasonal_order, dataframe, split, batch=1):
     predictions =  []
     prediction_range = list(pd.date_range(split, dataframe.index[-1], freq='MS'))
     
-    for test_dates in batched(prediction_range, batch):
+    for test_dates in chunks(prediction_range, batch):
         y_train = get_train_data(dataframe, test_dates)
         model = SARIMAX(y_train, order=order, seasonal_order=seasonal_order)
         fit = model.fit()
@@ -389,7 +399,9 @@ models_metrics = pd.DataFrame(columns = METRICS_NAMES + ["TestName", "Model"])
 ```
 
 ```python
-def save_metrics(models_metrics, model_name, test_name, metrics,):
+def save_metrics(models_metrics, model_name, test_name, metrics):
+    models_metrics = models_metrics.drop(models_metrics[(models_metrics.TestName == test_name) & (models_metrics.Model == model_name)].index)
+    
     metrics_dict = dict(zip(METRICS_NAMES, metrics))
     metrics_dict["TestName"] = test_name
     metrics_dict["Model"] = model_name
@@ -412,6 +424,10 @@ def compare_model_tests(model_name):
 ## Baseline
 <!-- #endregion -->
 
+```python
+test_size_precent = 0.67
+```
+
 <!-- #region tags=[] -->
 ### Predict previous value
 <!-- #endregion -->
@@ -432,7 +448,7 @@ def predict_previous_value_for_test(train, test):
 ```
 
 ```python
-train_data, test_data, _ = split_train_test(df, 0.70)
+train_data, test_data, _ = split_train_test(df,test_size_precent)
 predictons = predict_previous_value_for_test(train_data, test_data)
 plot_test_with_predictions(test_data, predictons, "Prediction is last known value all test")
 
@@ -450,7 +466,7 @@ def predict_previous_value_rolling_12(dataframe, split):
     predictions = pd.DataFrame()
     prediction_range = list(pd.date_range(split, dataframe.index[-1], freq='MS'))
 
-    for test_split in batched(prediction_range, 12):
+    for test_split in chunks(prediction_range, 12):
         train = get_train_data(dataframe, test_split) 
         test = dataframe[dataframe.index.isin(test_split)]
         prediction = predict_previous_value_for_test(train,test)
@@ -459,7 +475,7 @@ def predict_previous_value_rolling_12(dataframe, split):
 ```
 
 ```python
-_, test_data, split_date = split_train_test(df, 0.70)
+_, test_data, split_date = split_train_test(df, test_size_precent)
 predictons = predict_previous_value_rolling_12(df, split_date)
 plot_test_with_predictions(test_data, predictons, "Prediction is last known value")
 metrics = list(get_metrics(test_data.values, predictons))
@@ -477,88 +493,7 @@ def predict_previous_value_rolling(dataframe, split):
 ```
 
 ```python
-_, test_data, split_date = split_train_test(df, 0.70)
-predictons = predict_previous_value_rolling(df, split_date)
-plot_test_with_predictions(test_data, predictons, "Prediction is last known value")
-metrics = list(get_metrics(test_data.values, predictons))
-print_metrics(metrics)
-models_metrics = save_metrics(models_metrics, previous_model_name, "Rolling_prediction_1", metrics)
-```
-
-<!-- #region tags=[] -->
-#### Comparision
-<!-- #endregion -->
-
-```python
-compare_model_tests(previous_model_name)
-```
-
-```python
-avg_model_name = "Average_method"
-```
-
-<!-- #region tags=[] -->
-#### Predict all test at once
-<!-- #endregion -->
-
-```python
-def predict_avg_value_for_test(train, test):
-    predictions = pd.DataFrame().reindex_like(test)
-    predictions['Num_Passengers'] = train['Num_Passengers'].mean()
-    return predictions
-```
-
-```python
-train_data.Num_Passengers.mean()
-```
-
-```python
-train_data, test_data, _ = split_train_test(df, 0.70)
-predictons = predict_avg_value_for_test(train_data, test_data)
-plot_test_with_predictions(test_data, predictons, "Prediction is last known value all test")
-
-metrics = list(get_metrics(test_data.values, predictons))
-print_metrics(metrics)
-models_metrics = save_metrics(models_metrics, avg_model_name, "Predict_all_test", metrics)
-```
-
-<!-- #region tags=[] -->
-#### Rolling presitions 12 months
-<!-- #endregion -->
-
-```python
-def predict_previous_value_rolling_12(dataframe, split):
-    predictions = pd.DataFrame()
-    prediction_range = list(pd.date_range(split, dataframe.index[-1], freq='MS'))
-
-    for test_split in batched(prediction_range, 12):
-        train = get_train_data(dataframe, test_split) 
-        test = dataframe[dataframe.index.isin(test_split)]
-        prediction = predict_previous_value_for_test(train,test)
-        predictions = pd.concat([predictions, prediction])
-    return predictions
-```
-
-```python
-_, test_data, split_date = split_train_test(df, 0.70)
-predictons = predict_previous_value_rolling_12(df, split_date)
-plot_test_with_predictions(test_data, predictons, "Prediction is last known value")
-metrics = list(get_metrics(test_data.values, predictons))
-print_metrics(metrics)
-models_metrics = save_metrics(models_metrics, previous_model_name, "Rolling_prediction_12", metrics)
-```
-
-<!-- #region tags=[] -->
-#### Rolling prediction
-<!-- #endregion -->
-
-```python
-def predict_previous_value_rolling(dataframe, split):
-    return dataframe[split + relativedelta(months=-1): ][:-1].shift(1, freq='M')
-```
-
-```python
-_, test_data, split_date = split_train_test(df, 0.70)
+_, test_data, split_date = split_train_test(df, test_size_precent)
 predictons = predict_previous_value_rolling(df, split_date)
 plot_test_with_predictions(test_data, predictons, "Prediction is last known value")
 metrics = list(get_metrics(test_data.values, predictons))
@@ -583,14 +518,14 @@ lin_reg_res_name = "Lin_reg_lag_residual"
 ```
 
 ```python tags=[]
-def linear_regression_with_season(x, y, predict):
-    assert len(y)>12, "This prediction require more then year of test data"
+def linear_regression_with_season(x, y, test, predict):
     model = LinearRegression()
     fit = model.fit(x, y)
-    predict_test = fit.predict(x)
+    predict_test = fit.predict(test)
     predictions = fit.predict(predict)
     for i in range(len(predictions)):
-        predictions[i]+= (y[i-12] - predict_test[i-12])
+        ind_p = i-12
+        predictions[i]+= (y[ind_p] - predict_test[ind_p])
     return fit, predictions
 ```
 
@@ -602,24 +537,28 @@ def fit_linear_regression_with_lag_residual(dataframe, split, batch=1):
     predictions =  []
     prediction_range = list(pd.date_range(split, dataframe.index[-1], freq='MS'))
     
-    for test_dates in batched(prediction_range, batch):
+    for test_dates in chunks(prediction_range, batch):
         y_train = get_train_data(dataframe, test_dates).Num_Passengers.values.reshape(-1, 1)
-        x_train = np.arange(len(y_train)).reshape(-1, 1)
-        test_start = len(y_train)+1
-        test = np.arange(test_start, test_start + len(test_dates)).reshape(-1, 1)
+        train_size = len(y_train)
+        assert train_size>12, "Not enough data for training"
+        x_train = np.arange(train_size).reshape(-1, 1)
+        predict_start = len(y_train)+1
+        predict = np.arange(predict_start, predict_start + len(test_dates)).reshape(-1, 1)
+        test = np.concatenate((x_train[-12:], predict))
         
-        fit, pred = linear_regression_with_season(x_train, y_train, test)
+        fit, pred = linear_regression_with_season(x_train[:-12], y_train[:-12], test, predict)
         
         model_fit.append(fit)
         predictions.extend(pred)
-    predictions_df = pd.DataFrame({'Month': prediction_range, 'Num_Passengers': np.concatenate(predictions)})
+    predictions_data = np.concatenate(predictions)
+    predictions_df = pd.DataFrame({'Month': prediction_range[:len(predictions_data)], 'Num_Passengers':predictions_data })
     predictions_df = predictions_df.set_index('Month')
     
     return model_fit, predictions_df
 ```
 
 ```python
-_, test_data, split_date = split_train_test(df, 0.70)
+_, test_data, split_date = split_train_test(df, test_size_precent)
 models, predictons = fit_linear_regression_with_lag_residual(df, split_date)
 plot_test_with_predictions(test_data, predictons, "Linear regression with lag residual")
 metrics = list(get_metrics(test_data.values, predictons))
@@ -632,7 +571,7 @@ models_metrics = save_metrics(models_metrics, lin_reg_res_name, "Rolling_predict
 <!-- #endregion -->
 
 ```python
-_, test_data, split_date = split_train_test(df, 0.70)
+_, test_data, split_date = split_train_test(df, test_size_precent)
 models, predictons = fit_linear_regression_with_lag_residual(df, split_date, batch=12)
 plot_test_with_predictions(test_data, predictons, "Linear regression with lag residual")
 metrics = list(get_metrics(test_data.values, predictons))
@@ -644,24 +583,8 @@ models_metrics = save_metrics(models_metrics, lin_reg_res_name, "Rolling_predict
 #### Predict all test at once
 <!-- #endregion -->
 
-```python tags=[]
-def fit_linear_regression_with_lag_residual_all_test(train, test):
-    y = train.Num_Passengers.values.reshape(-1, 1)
-    x = np.arange(len(y)).reshape(-1, 1)
-    x_test =  np.arange(len(test)).reshape(-1, 1)
-    fit, pred = linear_regression_with_season(x, y, x_test)
-    predictions_df = pd.DataFrame({'Month': test.index, 'Num_Passengers':pred.flatten()})
-    predictions_df = predictions_df.set_index('Month')
-    return fit, predictions_df
-```
-
 ```python
-train_data, test_data, _ = split_train_test(df, 0.70)
-models, predictons = fit_linear_regression_with_lag_residual_all_test(train_data, test_data)
-plot_test_with_predictions(test_data, predictons, "Linear regression with lag residual")
-metrics = list(get_metrics(test_data.values, predictons))
-print_metrics(metrics)
-models_metrics = save_metrics(models_metrics, lin_reg_res_name, "Predict_all_test", metrics)
+# Can't be used as algorithm requires to use actual data a year ago
 ```
 
 #### Comparision
@@ -684,7 +607,7 @@ def fit_linear_regression_with_12_lag(dataframe, split, batch = 1):
     predictions =  []
     prediction_range = list(pd.date_range(split, dataframe.index[-1], freq='MS'))
     
-    for test_dates in batched(prediction_range, batch):
+    for test_dates in chunks(prediction_range, batch):
         train_data = get_train_data(dataframe, test_dates).reset_index(drop=True)
         train_data["lag_12"] = train_data["Num_Passengers"].shift(12)
         train_data["lag_1"] = train_data["Num_Passengers"].shift(1)
@@ -693,17 +616,16 @@ def fit_linear_regression_with_12_lag(dataframe, split, batch = 1):
         train_col = ["lag_1", "lag_12"]
         X_train, X_test, y_train, _ = train_test_split(train_data[train_col],  train_data["Num_Passengers"],
                                                        test_size = len(test_dates), shuffle = False)
-        
         fit, pred = linear_regression(X_train, y_train , X_test)
         model_fit.append(fit)
         predictions.extend(pred) 
-    predictions_df = pd.DataFrame({'Month': prediction_range, 'Num_Passengers':  predictions})
+    predictions_df = pd.DataFrame({'Month': prediction_range[:len(predictions)], 'Num_Passengers':  predictions})
     predictions_df = predictions_df.set_index('Month')
     
     return model_fit, predictions_df
 ```
 ```python
-_, test_data, split_date = split_train_test(df, 0.70)
+_, test_data, split_date = split_train_test(df, test_size_precent)
 _, predictons = fit_linear_regression_with_12_lag(df, split_date)
 plot_test_with_predictions(test_data, predictons, "Linear regression a1*xt + a2*xt-12 +b")
 
@@ -715,7 +637,7 @@ models_metrics = save_metrics(models_metrics, lin_reg_1_name, "Rolling_predictio
 #### Rolling predictions 12
 
 ```python
-_, test_data, split_date = split_train_test(df, 0.70)
+_, test_data, split_date = split_train_test(df, test_size_precent)
 _, predictons = fit_linear_regression_with_12_lag(df, split_date, batch = 12 )
 plot_test_with_predictions(test_data, predictons, "Linear regression a1*xt + a2*xt-12 +b")
 
@@ -753,7 +675,7 @@ def fit_linear_regression_with_12_lag_all_test(lr_train_data, lr_test_data):
 ```
 
 ```python
-train_data, test_data, _ = split_train_test(df, 0.70)
+train_data, test_data, _ = split_train_test(df, test_size_precent)
 _, predictons = fit_linear_regression_with_12_lag_all_test(train_data, test_data)
 plot_test_with_predictions(test_data.loc[predictons.index], predictons, "Linear regression a1*xt + a2*xt-12 +b")
 
@@ -784,7 +706,7 @@ def fit_linear_regression_with_diff_of_12_lag(dataframe, split, batch=1):
     predictions =  []
     prediction_range = list(pd.date_range(split, dataframe.index[-1], freq='MS'))
     
-    for test_dates in batched(prediction_range, batch):
+    for test_dates in chunks(prediction_range, batch):
         train_data = get_train_data(dataframe, test_dates).reset_index(drop=True)
         train_data["lag_12"] = train_data["Num_Passengers"].shift(12)
         train_data["lag_1"] =train_data["Num_Passengers"].shift(1)
@@ -799,13 +721,13 @@ def fit_linear_regression_with_diff_of_12_lag(dataframe, split, batch=1):
         model_fit.append(fit)
         predictions.extend(pred)
         
-    predictions_df = pd.DataFrame({'Month': prediction_range, 'Num_Passengers': predictions})
+    predictions_df = pd.DataFrame({'Month': prediction_range[:len(predictions)], 'Num_Passengers':  predictions})
     predictions_df = predictions_df.set_index('Month')
     
     return model_fit, predictions_df
 ```
 ```python
-_, test_data, split_date = split_train_test(df, 0.70)
+_, test_data, split_date = split_train_test(df, test_size_precent)
 _, predictons = fit_linear_regression_with_diff_of_12_lag(df, split_date)
 plot_test_with_predictions(test_data, predictons, "Linear regression  a1*xt + a2*(xt-12 - xt) +b")
 
@@ -817,7 +739,7 @@ models_metrics = save_metrics(models_metrics, lin_reg_2_name, "Rolling_predictio
 #### Rolling predictions 12
 
 ```python
-_, test_data, split_date = split_train_test(df, 0.70)
+_, test_data, split_date = split_train_test(df, test_size_precent)
 _, predictons = fit_linear_regression_with_diff_of_12_lag(df, split_date, batch=12)
 plot_test_with_predictions(test_data, predictons, "Linear regression  a1*xt + a2*(xt-12 - xt) +b")
 
@@ -857,7 +779,7 @@ def fit_linear_regression_with_diff_of_12_lag_all_test(lr_train_data, lr_test_da
 ```
 
 ```python
-train_data, test_data, _ = split_train_test(df, 0.70)
+train_data, test_data, _ = split_train_test(df, test_size_precent)
 _,predictons = fit_linear_regression_with_diff_of_12_lag_all_test(train_data,test_data)
 plot_test_with_predictions(test_data.loc[predictons.index], predictons, "Linear regression  a1 *xt + a2*(xt-12 - xt) +b")
 
@@ -888,7 +810,7 @@ def fit_linear_regression_with_lag_of_12_diff(dataframe, split, batch=1):
     predictions =  []
     prediction_range = list(pd.date_range(split, dataframe.index[-1], freq='MS'))
     
-    for test_dates in batched(prediction_range, batch):
+    for test_dates in chunks(prediction_range, batch):
         train_data = get_train_data(dataframe, test_dates).reset_index(drop=True)
         train_data["lag_1"] = train_data["Num_Passengers"].shift(1)
         train_data["lag_diff_11"] = train_data["Num_Passengers"].shift(11)
@@ -904,13 +826,13 @@ def fit_linear_regression_with_lag_of_12_diff(dataframe, split, batch=1):
         model_fit.append(fit)
         predictions.extend(pred)
         
-    predictions_df = pd.DataFrame({'Month': prediction_range, 'Num_Passengers': predictions})
+    predictions_df = pd.DataFrame({'Month': prediction_range[:len(predictions)], 'Num_Passengers':  predictions})
     predictions_df = predictions_df.set_index('Month')
     
     return model_fit, predictions_df
 ```
 ```python
-_, test_data, split_date = split_train_test(df, 0.70)
+_, test_data, split_date = split_train_test(df, test_size_precent)
 _, predictons = fit_linear_regression_with_lag_of_12_diff(df, split_date)
 plot_test_with_predictions(test_data, predictons, "Linear regression a1 *xt + a2*(xt-11 - xt-12) +b")
 
@@ -923,7 +845,7 @@ models_metrics = save_metrics(models_metrics, lin_reg_3_name, "Rolling_predictio
 #### Rolling predictions 12
 
 ```python
-_, test_data, split_date = split_train_test(df, 0.70)
+_, test_data, split_date = split_train_test(df, test_size_precent)
 _, predictons = fit_linear_regression_with_lag_of_12_diff(df, split_date, batch=12)
 plot_test_with_predictions(test_data, predictons, "Linear regression a1 *xt + a2*(xt-11 - xt-12) +b")
 
@@ -965,7 +887,7 @@ def fit_linear_regression_with_lag_of_12_diff_all_test(lr_train_data, lr_test_da
 ```
 
 ```python
-train_data, test_data, _ = split_train_test(df, 0.70)
+train_data, test_data, _ = split_train_test(df, test_size_precent)
 _, predictons = fit_linear_regression_with_lag_of_12_diff_all_test(train_data, test_data)
 plot_test_with_predictions(test_data.loc[predictons.index],predictons,   "Linear regression a1 *xt + a2*(xt-11 - xt-12) +b")
 
@@ -996,7 +918,7 @@ def exponentialSmoothing(dataframe, split, batch=1):
     predictions =  []
     prediction_range = list(pd.date_range(split, dataframe.index[-1], freq='MS'))
     
-    for test_dates in batched(prediction_range, batch):
+    for test_dates in chunks(prediction_range, batch):
         train_data = get_train_data(dataframe, test_dates)
         model = ExponentialSmoothing(train_data, seasonal_periods = 12, trend='add', seasonal='add')
         fit = model.fit()
@@ -1008,7 +930,7 @@ def exponentialSmoothing(dataframe, split, batch=1):
 ```
 
 ```python
-_, test_data, split_date = split_train_test(df, 0.70)
+_, test_data, split_date = split_train_test(df, test_size_precent)
 models, predictons = exponentialSmoothing(df, split_date)
 plot_test_with_predictions(test_data, predictons, "ExponentialSmoothing")
 
@@ -1024,7 +946,7 @@ models[-1].summary()
 #### Rolling predictions 12
 
 ```python
-_, test_data, split_date = split_train_test(df, 0.70)
+_, test_data, split_date = split_train_test(df, test_size_precent)
 models, predictons = exponentialSmoothing(df, split_date,batch=12 )
 plot_test_with_predictions(test_data, predictons, "ExponentialSmoothing")
 
@@ -1044,7 +966,7 @@ def exponentialSmoothing_all_test(train, test):
 ```
 
 ```python
-train_data, test_data, split_date = split_train_test(df, 0.70)
+train_data, test_data, split_date = split_train_test(df, test_size_precent)
 models, predictons = exponentialSmoothing_all_test(train_data, test_data)
 plot_test_with_predictions(test_data, predictons, "ExponentialSmoothing")
 
@@ -1087,7 +1009,7 @@ pm.auto_arima(df.Num_Passengers,
 ### Predict all test at once
 
 ```python
-train_data, test_data, _ = split_train_test(df, 0.7)
+train_data, test_data, _ = split_train_test(df, test_size_precent)
 ```
 
 ```python
@@ -1111,7 +1033,7 @@ models_metrics = save_metrics(models_metrics, ar_model_name, "Predict_all_test",
 ### Rolling predictions
 
 ```python
-_, test_data, split = split_train_test(df, 0.70)
+_, test_data, split = split_train_test(df, test_size_precent)
 models, predictions = fit_model_arima((14,1,0), df, split, method = 'statespace')
 plot_test_with_predictions(test_data, predictions, "Predict with AR model")
 
@@ -1127,7 +1049,7 @@ model_stats(models[-1])
 ### Rolling predictions 12
 
 ```python
-_, test_data, split = split_train_test(df, 0.70)
+_, test_data, split = split_train_test(df, test_size_precent)
 models, predictions = fit_model_arima((14,1,0), df, split)
 plot_test_with_predictions(test_data, predictions, "Predict with AR model")
 
@@ -1170,7 +1092,7 @@ pm.auto_arima(df.Num_Passengers,
 ### Rolling predictions
 
 ```python
-_, test_data, split = split_train_test(df, 0.70)
+_, test_data, split = split_train_test(df, test_size_precent)
 models, predictions = fit_model_arima((0,1,12), df, split)
 plot_test_with_predictions(test_data, predictions, "Predict with MA model")
 
@@ -1188,7 +1110,7 @@ models[-1].summary()
 <!-- #endregion -->
 
 ```python
-_, test_data, split = split_train_test(df, 0.70)
+_, test_data, split = split_train_test(df, test_size_precent)
 models, predictions = fit_model_arima((0,1,12), df, split, batch=12)
 plot_test_with_predictions(test_data, predictions, "Predict with AR model")
 
@@ -1200,7 +1122,7 @@ models_metrics = save_metrics(models_metrics, ma_model_name, "Rolling_prediction
 ### Predict all test at once
 
 ```python
-train_data, test_data, _ = split_train_test(df, 0.70)
+train_data, test_data, _ = split_train_test(df,test_size_precent)
 models, predictions = fit_model_arima_all_test((0,1,12), train_data,test_data)
 plot_test_with_predictions(test_data, predictions, "Predict with MA model")
 
@@ -1243,7 +1165,7 @@ pm.auto_arima(df.Num_Passengers,
 ### Rolling prediction
 
 ```python
-_, test_data, split = split_train_test(df, 0.70)
+_, test_data, split = split_train_test(df, test_size_precent)
 models, predictions = fit_model_arima((8,1,8), df, split)
 plot_test_with_predictions(test_data, predictions, "Predict with ARIMA model")
 
@@ -1259,7 +1181,7 @@ models[-1].summary()
 ### Rolling presictions 12
 
 ```python
-_, test_data, split = split_train_test(df, 0.70)
+_, test_data, split = split_train_test(df, test_size_precent)
 models, predictions = fit_model_arima((8,1,8), df, split, batch=12)
 plot_test_with_predictions(test_data, predictions, "Predict with AR model")
 
@@ -1271,7 +1193,7 @@ models_metrics = save_metrics(models_metrics, arima_model_name, "Rolling_predict
 ### Predict all test at once
 
 ```python
-train_data, test_data, _ = split_train_test(df, 0.70)
+train_data, test_data, _ = split_train_test(df, test_size_precent)
 models, predictions = fit_model_arima_all_test((8,1,8), train_data, test_data)
 plot_test_with_predictions(test_data, predictions, "Predict with ARIMA model")
 
@@ -1323,7 +1245,7 @@ pm.auto_arima(df.Num_Passengers,
 <!-- #endregion -->
 
 ```python
-_, test_data, split = split_train_test(df, 0.70)
+_, test_data, split = split_train_test(df, test_size_precent)
 models, predictions = fit_model_sarimax((0,1,1),(2,1,1, 12), df, split)
 plot_test_with_predictions(test_data, predictions, "Predict with SARIMAX model")
 
@@ -1335,7 +1257,7 @@ models_metrics = save_metrics(models_metrics, sarimax_model_name, "Rolling_predi
 ### Rolling prediction 12
 
 ```python
-_, test_data, split = split_train_test(df, 0.70)
+_, test_data, split = split_train_test(df, test_size_precent)
 models, predictions = fit_model_sarimax((0,1,1),(2,1,1, 12), df, split,  batch = 12)
 plot_test_with_predictions(test_data, predictions, "Predict with SARIMAX model")
 
@@ -1347,7 +1269,7 @@ models_metrics = save_metrics(models_metrics, sarimax_model_name, "Rolling_predi
 ### Predict all test at once
 
 ```python
-train_data, test_data, _ = split_train_test(df, 0.70)
+train_data, test_data, _ = split_train_test(df, test_size_precent)
 models, predictions = fit_model_sarimax_all_test((0,1,1),(2,1,1, 12), train_data, test_data)
 plot_test_with_predictions(test_data, predictions, "Predict with SARIMA model")
 
@@ -1367,7 +1289,7 @@ compare_model_tests(sarimax_model_name)
 <!-- #endregion -->
 
 ```python
-n_nest_models = 7
+n_nest_models = 5
 ```
 
 ```python
@@ -1520,8 +1442,4 @@ plt.title("Detrend")
 sns.lineplot(x="Month", y="Num_Passengers", data=y_detrend, )
 plt.show()
 adf_test(y_detrend)
-```
-
-```python
-
 ```
