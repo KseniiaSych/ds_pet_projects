@@ -23,6 +23,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.model_selection import GridSearchCV
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.pipeline import Pipeline
+from skopt import BayesSearchCV
 
 import mlflow
 from mlflow.tracking import MlflowClient
@@ -32,7 +33,6 @@ import warnings
 
 from CustomTransformers import (FillNaMode, DropColumns, ProcessTargetEncoding)
 from TitanicSpecificTransformers import (ExctractTitle, FamilySize)
-
 ```
 
 <!-- #region tags=[] -->
@@ -183,14 +183,16 @@ print_scores(y_test, y_pred)
 
 ```python
 grad_param_grid = dict(
-    loss = ['log_loss', 'exponential'],
-    learning_rate = [0.8, 1.0, 1.2],
-    n_estimators = [120, 200, 250],
-    subsample = [0.5, 0.8, 1.0],
+    loss = ['log_loss', 'deviance','exponential'],
+    learning_rate = [0.5, 0.25, 0.1, 0.05, 0.01],
+    n_estimators = [1, 2, 4, 8, 16, 32, 64, 100],
+    subsample = [0.2, 0.5, 0.8, 1.0],
     criterion = ['friedman_mse', 'squared_error'],
-    min_samples_split = [0.2, 0.5, 1.0],
+    min_samples_split = np.linspace(0.1, 1.0, 10, endpoint=True),
+    min_samples_leaf = np.linspace(0.1, 0.5, 5, endpoint=True),
     min_weight_fraction_leaf = [0.1, 0.15, 0.2],
-    max_depth = [20, 26, 28]
+    max_depth =list(range(1,22,2)),
+    max_features  = list(range(1, x_test_processed.shape[1]))
 )
 
 grad_grid_search = GridSearchCV(grad_clf, grad_param_grid, n_jobs=-1)
@@ -199,7 +201,7 @@ grad_grid_search = GridSearchCV(grad_clf, grad_param_grid, n_jobs=-1)
 ```python
 EXPERIMENT_NAME = 'mlflow-grad_boost'
 EXPERIMENT_ID = mlflow.set_experiment(EXPERIMENT_NAME).name
-mlflow.sklearn.autolog(log_models=False, silent=True, max_tuning_runs=500)
+mlflow.sklearn.autolog(log_models=False, silent=False, max_tuning_runs=None)
 with mlflow.start_run() as run:
     grad_grid_search.fit(X_preprocessed, Y)
 ```
@@ -215,6 +217,38 @@ grad_best
 ```python
 y_pred_grad = grad_best.predict(x_test_processed)
 print_scores(y_test, y_pred_grad)
+```
+
+## BayesSearch
+
+```python
+reg_bay =  BayesSearchCV(
+    grad_clf,
+    grad_param_grid,
+    n_jobs=-1,
+    random_state=42
+)
+```
+
+```python
+EXPERIMENT_NAME = 'mlflow-grad_boost_bayes_search'
+EXPERIMENT_ID = mlflow.set_experiment(EXPERIMENT_NAME).name
+mlflow.sklearn.autolog(log_models=False, silent=True, max_tuning_runs=200)
+with mlflow.start_run() as run:
+    reg_bay.fit(X_preprocessed, Y)
+```
+
+```python
+bay_best = reg_bay.best_estimator_
+```
+
+```python
+bay_best
+```
+
+```python
+y_pred_bay = bay_best.predict(x_test_processed)
+print_scores(y_test, y_pred_bay)
 ```
 
 # XGBoost
@@ -234,9 +268,8 @@ print_scores(y_test, y_pred_xgb)
 
 ```python
 xgb_param_grid = dict(
-    max_depth = [2,4,6]
+    max_depth =list(range(1,22,2)),
 )
-
 xgb_grid_search = GridSearchCV(xgb_clf, xgb_param_grid, n_jobs=-1)
 ```
 
