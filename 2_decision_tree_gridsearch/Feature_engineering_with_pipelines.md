@@ -16,6 +16,7 @@ jupyter:
 ```python
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from sklearn import tree
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
@@ -74,7 +75,6 @@ x_test, y_test = exctract_target(test)
 ```
 
 ```python
-target_name = 'Survived'
 columns_with_na_category = ['Embarked', 'Title']
 columns_with_na_numeric = ['Age']
 category_columns = ['Embarked', 'Sex', 'Deck', 'Title']
@@ -184,4 +184,20 @@ print("Accuracy Score: ", accuracy_score(y_test, y_pred))
 print("F1 Score: ", f1_score(y_test, y_pred, average='weighted'))
 print("Precision Score: ", precision_score(y_test, y_pred, average='weighted'))
 print("Recall Score: ", recall_score(y_test, y_pred, average='weighted'))
+```
+
+```python
+df_results = pd.DataFrame(grid_search.cv_results_)
+df_results = df_results.sort_values(by=["rank_test_score"])
+```
+
+```python
+plt.plot(df_results.mean_test_score, '.')
+plt.ylim((0,1))
+plt.axhline(Y.mean(), color='r')
+plt.show()
+```
+
+```python
+
 ```
