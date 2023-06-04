@@ -993,7 +993,7 @@ ar_model_name = "AR"
 pm.auto_arima(df.Num_Passengers,
     start_p=1,
     start_q=0,
-    max_p=20,
+    max_p=26,
     max_q=0,
     max_order = None,
     maxiter = 500,
