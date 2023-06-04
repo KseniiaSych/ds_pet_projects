@@ -131,3 +131,6 @@ dmypy.json
 data/
 *.ipynb 
 .DS_Store
+
+#mlflow
+*/mlruns/*
