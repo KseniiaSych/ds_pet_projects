@@ -464,43 +464,16 @@ plt.show()
 ```
 
 ```python
-cluster_colors = ['#0000FF', '#FF4040', '#7FFF00', '#006400', '#9932CC', '#FF1493']
-```
-
-```python
 pca_scaled_std = PCA(n_components=2, random_state=42)
 X_std_pca = pca_scaled_std.fit_transform(df_X)
 ```
 
 ```python
-ax = plt.subplot()
-y = df_clustered.cluster
-y_values = df_clustered.cluster.unique()
-for l, c, m in zip(y_values, cluster_colors[0:len(y_values)], ('^', 's', 'o', 'P', 'D')):
-    ax.scatter(X_std_pca[y == l, 0],
-                X_std_pca[y == l, 1],
-                color=c,
-                label='cluster %s' % l,
-                alpha=0.9,
-                marker=m
-                )
-ax.set_title("PCA Visualization by cluster")
-plt.show()
-```
+df_pca = pd.DataFrame(X_std_pca, columns = ['pca_1', 'pca_2'])
+df_pca['cluster'] = df_clustered.cluster
+df_pca['operator'] = operator_Y.values
 
-```python
-ax = plt.subplot()
-y = operator_Y
-y_values =y.unique()
-for l, c, m in zip(y_values, cluster_colors[0:len(y_values)], ('^', 's', 'o', 'P', 'D')):
-    ax.scatter(X_std_pca[y == l, 0],
-                X_std_pca[y == l, 1],
-                color=c,
-                label='cluster %s' % l,
-                alpha=0.9,
-                marker=m
-                )
-ax.set_title("PCA Visualization by operators")
+sns.scatterplot(df_pca, x='pca_1', y='pca_2', hue='cluster', style='operator', palette = "bright")
 plt.show()
 ```
 
@@ -508,23 +481,11 @@ plt.show()
 os.environ["_RANDOM_STATE"] = "42"
 embedding = pacmap.PaCMAP(n_components=2)
 X_std_pacmap = embedding.fit_transform(df_X.to_numpy(), init="pca")
-ax = plt.subplot()
 
-y = df_clustered.cluster
-y_values = df_clustered.cluster.unique()
+df_pca = pd.DataFrame(X_std_pacmap, columns = ['pca_1', 'pca_2'])
+df_pca['cluster'] = df_clustered.cluster
+df_pca['operator'] = operator_Y.values
 
-for l, c, m in zip(y_values, cluster_colors[0:len(y_values)], ('^', 's', 'o')):
-    ax.scatter(X_std_pacmap[y == l, 0],
-                X_std_pacmap[y == l, 1],
-                color=c,
-                label='cluster %s' % l,
-                alpha=0.9,
-                marker=m
-                )
-ax.set_title("PACMAP Visualization")
+sns.scatterplot(df_pca, x='pca_1', y='pca_2', hue='cluster', style='operator', palette = "bright")
 plt.show()
-```
-
-```python
-
 ```
