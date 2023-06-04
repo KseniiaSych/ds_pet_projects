@@ -20,10 +20,11 @@ import matplotlib.pyplot as plt
 
 from sklearn.ensemble import GradientBoostingClassifier, AdaBoostClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import RandomizedSearchCV
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 from sklearn.pipeline import Pipeline
 from skopt import BayesSearchCV
+from skopt.space import Real, Categorical, Integer
 
 import mlflow
 from mlflow.tracking import MlflowClient
@@ -138,7 +139,7 @@ param_grid = dict(
     algorithm = ['SAMME', 'SAMME.R']
 )
 
-ada_grid_search = GridSearchCV(ada_clf, param_grid, n_jobs=-1)
+ada_grid_search = RandomizedSearchCV(ada_clf, param_grid, n_jobs=-1)
 ```
 
 ```python
@@ -195,13 +196,13 @@ grad_param_grid = dict(
     max_features  = list(range(1, x_test_processed.shape[1]))
 )
 
-grad_grid_search = GridSearchCV(grad_clf, grad_param_grid, n_jobs=-1)
+grad_grid_search = RandomizedSearchCV(grad_clf, grad_param_grid, n_jobs=-1)
 ```
 
 ```python
 EXPERIMENT_NAME = 'mlflow-grad_boost'
 EXPERIMENT_ID = mlflow.set_experiment(EXPERIMENT_NAME).name
-mlflow.sklearn.autolog(log_models=False, silent=False, max_tuning_runs=None)
+mlflow.sklearn.autolog(log_models=False, silent=False, max_tuning_runs=500)
 with mlflow.start_run() as run:
     grad_grid_search.fit(X_preprocessed, Y)
 ```
@@ -222,9 +223,24 @@ print_scores(y_test, y_pred_grad)
 ## BayesSearch
 
 ```python
+reg_bay_param_grid = {
+    'loss': Categorical(['log_loss', 'deviance','exponential']),
+    'learning_rate' : Real(0.01, 0.5, prior='log-uniform'),
+    'n_estimators' : Integer(1,100),
+    'subsample' : Real(0.1, 1.0, prior='log-uniform'),
+    'criterion' : Categorical(['friedman_mse', 'squared_error']),
+    'min_samples_split' :  Real(0.1, 1.0, prior='log-uniform') ,
+    'min_samples_leaf' :  Real(0.1, 0.5, prior='log-uniform'), 
+    'min_weight_fraction_leaf' : [0.1, 0.15, 0.2],
+    'max_depth' : Integer(1,25),
+    'max_features' : Integer(1, x_test_processed.shape[1])
+}
+```
+
+```python
 reg_bay =  BayesSearchCV(
-    grad_clf,
-    grad_param_grid,
+    estimator = grad_clf,
+    search_spaces = reg_bay_param_grid,
     n_jobs=-1,
     random_state=42
 )
@@ -270,7 +286,7 @@ print_scores(y_test, y_pred_xgb)
 xgb_param_grid = dict(
     max_depth =list(range(1,22,2)),
 )
-xgb_grid_search = GridSearchCV(xgb_clf, xgb_param_grid, n_jobs=-1)
+xgb_grid_search = RandomizedSearchCV(xgb_clf, xgb_param_grid, n_jobs=-1)
 ```
 
 ```python
@@ -292,8 +308,4 @@ xgb_best
 ```python
 y_pred_xgb= xgb_best.predict(x_test_processed)
 print_scores(y_test, y_pred_xgb)
-```
-
-```python
-
 ```
