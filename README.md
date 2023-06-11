@@ -21,5 +21,13 @@ Use statistical models to predict future value based on time series data. Explor
 
 ## 4. Comparison of experiment group with control group
 
-Explore and preprocess dataset, compare research and control groups by different parameters, visually, and check the statistical significance of the difference. 
+Explore and preprocess dataset, compare research and control groups by different parameters, visually, and check the statistical significance of the difference.
+
+## 5. Image classification
+```diff
+Data: https://www.kaggle.com/datasets/samuelcortinhas/muffin-vs-chihuahua-image-classification 
+```
+Neural networks for image binary classification task.
+
+
 
