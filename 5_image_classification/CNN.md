@@ -124,7 +124,7 @@ plot_batch(dataloader = view_loader)
 # Train model
 
 ```python
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 ```
 
 ```python
@@ -174,8 +174,10 @@ class TransferResNet(pl.LightningModule):
         num_filters = backbone.fc.in_features
         layers = list(backbone.children())[:-1]
         self.feature_extractor = nn.Sequential(*layers)
-        self.output = nn.Linear(num_filters, 1)
-        self.classifier = nn.Sigmoid()
+        self.classifier = nn.Sequential( nn.Linear(num_filters, num_filters),
+                        nn.ReLU(),  
+                        nn.Linear(num_filters, 1),
+                        nn.Sigmoid())
         
         self.feature_extractor.eval()
         for param in self.feature_extractor.parameters():
@@ -184,7 +186,7 @@ class TransferResNet(pl.LightningModule):
         
     def _predict(self, x):
         representations = self.feature_extractor(x).flatten(1)
-        return self.classifier(self.output(representations))
+        return self.classifier(representations)
 
     def training_step(self, batch, batch_idx):
         x, y = batch
