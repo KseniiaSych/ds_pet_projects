@@ -202,16 +202,22 @@ class TransferResNet(pl.LightningModule):
         y_hat = torch.flatten(self._predict(x))
         loss = F.binary_cross_entropy(y_hat, y.float())
         self.log("test_loss", loss)
-        self.log("test_acc", self.test_acc.compute(), prog_bar=True) 
+        self.test_acc.update(y_hat, y) 
         return loss
+    
+    def on_test_epoch_end(self): 
+        self.log("test_acc", self.test_acc.compute()) 
     
     def validation_step(self, batch, batch_idx):
         x, y = batch
         y_hat = torch.flatten(self._predict(x))
         loss = F.binary_cross_entropy(y_hat, y.float())
         self.log("valid_loss", loss)
-        self.log("valid_acc", self.valid_acc.compute(), prog_bar=True) 
+        self.valid_acc.update(y_hat, y) 
         return loss
+    
+    def on_validation_epoch_end(self):
+        self.log("val_acc", self.valid_acc.compute()) 
     
     def forward(self, x):
         return self._predict(x)
