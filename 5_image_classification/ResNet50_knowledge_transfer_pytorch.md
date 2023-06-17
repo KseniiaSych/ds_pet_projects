@@ -58,11 +58,11 @@ dataroot = '../data/muffin-vs-chihuahua-image-classification'
 
 ```python tags=[]
 for class_name in class_names:
-    source_dir = os.path.join(dataroot, test_dir, class_name)
-    dest_dir = os.path.join(dataroot, val_dir, class_name)
+    source_dir = os.path.join(dataroot, train_dir, class_name)
+    dest_dir = os.path.join(dataroot,  val_dir, class_name)
     os.makedirs(dest_dir, exist_ok=True)  
     
-    _, val_imgs = train_test_split(os.listdir(source_dir), test_size=0.5, random_state=42)
+    _, val_imgs = train_test_split(os.listdir(source_dir), test_size=0.12, random_state=42)
     for i, file_name in enumerate(tqdm(val_imgs)):
         shutil.move(os.path.join(source_dir, file_name), os.path.join(dest_dir, file_name))
 ```
@@ -108,7 +108,7 @@ def imglabel(label):
 def plot_batch(dataloader= None, image=None, label = None):
     if dataloader:
         image, label = next(iter(dataloader))
-    assert len(image)>9
+    assert len(image)==BATCH_SIZE
     plt.figure(figsize=(8,8))
     for i in range(1, 10):
         plt.subplot(3,3,i)
@@ -168,13 +168,12 @@ class TransferResNet(pl.LightningModule):
         
         self.train_acc = BinaryAccuracy() 
         self.valid_acc = BinaryAccuracy() 
-        self.test_acc = BinaryAccuracy()     
         
         backbone = models.resnet50(weights="DEFAULT")
         num_filters = backbone.fc.in_features
         layers = list(backbone.children())[:-1]
         self.feature_extractor = nn.Sequential(*layers)
-        self.classifier = nn.Sequential( nn.Linear(num_filters, num_filters),
+        self.classifier = nn.Sequential(nn.Linear(num_filters, num_filters),
                         nn.ReLU(),  
                         nn.Linear(num_filters, 1),
                         nn.Sigmoid())
@@ -183,10 +182,12 @@ class TransferResNet(pl.LightningModule):
         for param in self.feature_extractor.parameters():
             param.requires_grad = False
 
-        
-    def _predict(self, x):
+    def forward(self, x):
         representations = self.feature_extractor(x).flatten(1)
-        return self.classifier(representations)
+        classifier_scores = self.classifier(representations)
+        print(classifier_scores.shape)
+        print(classifier_scores)
+        return classifier_scores
 
     def training_step(self, batch, batch_idx):
         x, y = batch
@@ -220,9 +221,6 @@ class TransferResNet(pl.LightningModule):
     
     def on_validation_epoch_end(self):
         self.log("val_acc", self.valid_acc.compute()) 
-    
-    def forward(self, x):
-        return self._predict(x)
 
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
