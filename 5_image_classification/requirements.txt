@@ -1,0 +1,15 @@
+tqdm==4.65.0
+torch==2.0.1+cu118
+torchaudio==2.0.2+cu118
+torchmetrics==0.11.2
+torchvision==0.15.2+cu118
+matplotlib==3.6.3
+scikit-learn==1.2.1
+scikit-optimize==0.9.0
+lightning==2.0.3
+lightning-cloud==0.5.36
+lightning-utilities==0.7.1
+datasets==2.13.0
+huggingface-hub==0.15.1
+transformers==4.30.2
+evaluate==0.4.0
