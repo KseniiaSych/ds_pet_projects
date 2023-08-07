@@ -54,12 +54,16 @@ class_names = ['chihuahua', 'muffin']
 # View dataset
 
 ```python tags=[]
-def print_dataset_len(dataroot, class_name, subsets=[]):
+def print_dataset_len(dataroot, class_name, subsets=None):
+    existing_sets = subsets or []
     print(f'{class_name}:')
-    lengths = {s:len(os.listdir(os.path.join(dataroot, s, class_name))) for s in subsets}
+    lengths = {s:len(os.listdir(os.path.join(dataroot, s, class_name))) for s in existing_sets}
     total_sum = sum(lengths.values())
-    for name, l in lengths.items():
-        print(f'{name} - {l} : {round(l/total_sum*100)}%')
+    if total_sum == 0:
+        print("Not found")
+    else:
+        for name, l in lengths.items():
+            print(f'{name} - {l} : {l/total_sum*100:.2f}%')
 ```
 
 ```python tags=[]
@@ -134,8 +138,8 @@ class DogVsMuffinDataModule(pl.LightningDataModule):
                 std=[0.5, 0.5, 0.5]
             )
         ])
-        self.train = ImageFolder(root = os.path.join(self.data_dir, train_dir), transform=train_transform)
-        
+        train_folder = ImageFolder(root = os.path.join(self.data_dir, train_dir), transform=train_transform)
+        self.train, self.validate = torch.utils.data.random_split(train_folder, [0.8, 0.2])
         test_transform = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
@@ -144,8 +148,7 @@ class DogVsMuffinDataModule(pl.LightningDataModule):
                 std=[0.5, 0.5, 0.5]
             )
         ])
-        test_folder = ImageFolder(root = os.path.join(self.data_dir, test_dir), transform=test_transform)
-        self.test, self.validate = torch.utils.data.random_split(test_folder, [0.5, 0.5])
+        self.test =  ImageFolder(root = os.path.join(self.data_dir, test_dir), transform=test_transform)
     
     def train_dataloader(self):
         return DataLoader(self.train, batch_size=self.batch_size, num_workers=self.num_workers,pin_memory=True,
@@ -169,15 +172,14 @@ class TransferResNet(pl.LightningModule):
         self.feature_extractor = nn.Sequential(*layers)
         self.classifier = nn.Sequential(nn.Linear(num_filters, num_filters),
                         nn.ReLU(),  
-                        nn.Linear(num_filters, 1),
-                        nn.Sigmoid())
+                        nn.Linear(num_filters, 1))
         
         self.feature_extractor.eval()
         for param in self.feature_extractor.parameters():
             param.requires_grad = False
             
     def loss(self, logits, labels):
-        return F.binary_cross_entropy(logits, labels.float())
+        return F.binary_cross_entropy_with_logits(logits, labels.float())
     
     def forward(self, x):
         representations = self.feature_extractor(x).flatten(1)
@@ -241,14 +243,17 @@ trainer.fit(model, datamodule = data_module)
 trainer.test(datamodule = data_module)
 ```
 
+# Visualize results
+
 ```python tags=[]
 t = Variable(torch.Tensor([0.5]))  # threshold
+sig = nn.Sigmoid()
 ```
 
 ```python tags=[]
 image, label = next(iter(data_module.test_dataloader()))
 model.eval()
-predictions = model(image)
+predictions =  sig(model(image))
 out = (predictions > t)
 plot_batch(image = image, label = out)
 ```
@@ -273,7 +278,7 @@ test_loader_iter = iter(loader)
 try:
     while len(w_image) <= VIEW_BATCH_SIZE:
         image, label = next(test_loader_iter)
-        predictions = model(image)
+        predictions = sig(model(image))
         out = (predictions > t).type(torch.int64).flatten()
         wrong_ind = (out != label)
         w_image.extend(image[wrong_ind,:,:,:])

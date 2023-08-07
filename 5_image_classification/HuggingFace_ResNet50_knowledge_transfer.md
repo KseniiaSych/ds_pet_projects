@@ -16,12 +16,13 @@ jupyter:
 ```python
 import os
 import matplotlib.pyplot as plt 
+import numpy as np
 
 import datasets
 from datasets import load_dataset
-import evaluate
 from transformers import DefaultDataCollator
 from transformers import AutoImageProcessor, AutoModelForImageClassification, TrainingArguments, Trainer
+import evaluate
 
 import torch
 from torch import nn
@@ -35,24 +36,32 @@ from torchvision.transforms import (Compose, Resize, RandomHorizontalFlip, Rando
 dataroot = '../data/muffin-vs-chihuahua-image-classification'
 train_dir = 'train'
 test_dir = 'test'
+subsets = [train_dir, test_dir ]
 
-subsets = [train_dir,test_dir ]
-class_names = ['chihuahua', 'muffin']
+label2id = {"chihuahua": 0, "muffin": 1}
+id2label = {v: k for k, v in label2id.items()}
+
+class_names = list(label2id.keys())
 ```
 
 ```python tags=[]
 checkpoint = "microsoft/resnet-50"
+batch_size = 16
 ```
 
 # View dataset
 
 ```python
-def print_dataset_len(dataroot, class_name, subsets=[]):
+def print_dataset_len(dataroot, class_name, subsets=None):
+    existing_sets = subsets or []
     print(f'{class_name}:')
-    lengths = {s:len(os.listdir(os.path.join(dataroot, s, class_name))) for s in subsets}
+    lengths = {s:len(os.listdir(os.path.join(dataroot, s, class_name))) for s in existing_sets}
     total_sum = sum(lengths.values())
-    for name, l in lengths.items():
-        print(f'{name} - {l} : {round(l/total_sum*100)}%')
+    if total_sum == 0:
+        print("Not found")
+    else:
+        for name, l in lengths.items():
+            print(f'{name} - {l} :{l/total_sum*100:.2f}%')
 ```
 
 ```python
@@ -78,9 +87,6 @@ def imshow(img,title):
     plt.title(title)
     plt.show()
     
-def imglabel(label):
-    return 'Muffin' if label else 'Chihuahua'
-    
 def plot_batch(dataset = None, image=None, label = None):
     if dataset:
         image = dataset[:9]["image"]
@@ -90,7 +96,7 @@ def plot_batch(dataset = None, image=None, label = None):
         plt.subplot(3,3,i)
         plt.tight_layout()
         plt.imshow(image[i-1])
-        plt.xlabel(imglabel(label[i-1]), fontsize=10)
+        plt.xlabel(id2label[label[i-1]], fontsize=10)
 ```
 
 ```python
@@ -118,87 +124,56 @@ train_transform = Compose(
     ]
 )
 
-test_transform = Compose([
-            Resize(size),
-            ToTensor(),
-            normalize
-        ])
+test_transform = Compose([Resize(size), ToTensor(), normalize])
 
-def preprocess_train(examples):
-    examples["pixel_values"] = [train_transform(img.convert("RGB")) for img in examples["image"]]
-    del examples["image"]
+def preprocess(examples, transform):
+    examples["pixel_values"] = [transform(image.convert("RGB")) for image in examples["image"]]
     return examples
 
-def preprocess_test(examples):
-    examples["pixel_values"] = [test_transform(img.convert("RGB")) for img in examples["image"]]
-    del examples["image"]
-    return examples
-
-def preprocess_val(examples):
-    examples["pixel_values"] = [test_transform(img.convert("RGB")) for img in examples["image"]]
-    return examples
+preprocess_train = lambda examples: preprocess(examples, train_transform)
+preprocess_test = lambda examples: preprocess(examples, test_transform)
 ```
 
 ```python tags=[]
-test_tmp = load_dataset("imagefolder", data_dir=dataroot, split="test")
-test_splitted = test_tmp.train_test_split(test_size=0.5, stratify_by_column = "label", shuffle = True )
+train_tmp = load_dataset("imagefolder", data_dir=dataroot, split="train")
+train_split = train_tmp.train_test_split(test_size=0.8, stratify_by_column = "label", shuffle = True)
 
 dataset = datasets.DatasetDict({
-    'train': load_dataset("imagefolder", data_dir=dataroot, split="train"),
-    'test': test_splitted['test'],
-    'valid': test_splitted['train']})
+    'train': train_split['test'],
+    'test': load_dataset("imagefolder", data_dir=dataroot, split="test"),
+    'valid': train_split['train']})
 ```
 
 ```python tags=[]
 dataset["train"].set_transform(preprocess_train)
 dataset["test"].set_transform(preprocess_test)
-```
-
-<!-- #region tags=[] -->
-## Model
-<!-- #endregion -->
-
-```python tags=[]
-class TransferResNet(nn.Module):
-    def __init__(self, num_labels): 
-        super(TransferResNet,self).__init__() 
-        self.model = AutoModelForImageClassification.from_pretrained(checkpoint)
-        for param in self.model.parameters():
-            param.requires_grad = False
-        
-        self.classifier = nn.Sequential(nn.Linear(1000, 8),
-                        nn.ReLU(),  
-                        nn.Linear(8, num_labels),
-                        nn.Sigmoid())
-        
-    def loss(self, logits, labels):
-        return F.binary_cross_entropy(logits, labels.float())
-
-    def forward(self, pixel_values=None, labels=None):
-        representation = self.model(pixel_values, output_hidden_states = True)
-        output = self.classifier(representation.logits).flatten()
-        if labels is not None:
-            loss = self.loss(output, labels)
-            return (loss, output)
-        return output
+dataset["valid"].set_transform(preprocess_test)
 ```
 
 <!-- #region tags=[] -->
 ## Train
 <!-- #endregion -->
 
-```python tags=[]
-accuracy = evaluate.load("accuracy")
-
-def compute_metrics(eval_pred):
-    predictions, labels = eval_pred
-    print(predictions)
-    return accuracy.compute(predictions=predictions, references=labels)
+```python
+model = AutoModelForImageClassification.from_pretrained(
+    checkpoint,
+    label2id=label2id,
+    id2label=id2label,
+    ignore_mismatched_sizes = True)
 ```
 
-```python
-model = TransferResNet(1)
-data_collator = DefaultDataCollator()
+```python tags=[]
+metric = evaluate.load("accuracy")
+def compute_metrics(eval_pred):
+    """Computes accuracy on a batch of predictions"""
+    predictions = np.argmax(eval_pred.predictions, axis=1)
+    return metric.compute(predictions=predictions, references=eval_pred.label_ids)
+
+
+def collate_fn(examples):
+    pixel_values = torch.stack([example["pixel_values"] for example in examples])
+    labels = torch.tensor([example["label"] for example in examples])
+    return {"pixel_values": pixel_values, "labels": labels}
 ```
 
 ```python
@@ -208,22 +183,22 @@ training_args = TrainingArguments(
     evaluation_strategy="epoch",
     save_strategy="epoch",
     learning_rate=5e-5,
-    per_device_train_batch_size=16,
+    per_device_train_batch_size=batch_size,
     gradient_accumulation_steps=4,
-    per_device_eval_batch_size=16,
+    per_device_eval_batch_size=batch_size,
     num_train_epochs=3,
     warmup_ratio=0.1,
-    logging_steps=1,
+    logging_steps=10,
     load_best_model_at_end=True,
     metric_for_best_model="accuracy",
     push_to_hub=False,
-    report_to = "none",
+    report_to = "none"
 )
 
 trainer = Trainer(
     model=model,
     args=training_args,
-    data_collator=data_collator,
+    data_collator=collate_fn,
     train_dataset=dataset["train"],
     eval_dataset=dataset["test"],
     tokenizer=image_processor,
@@ -232,7 +207,13 @@ trainer = Trainer(
 ```
 
 ```python tags=[]
-trainer.train()
+train_results = trainer.train()
+trainer.log_metrics("train", train_results.metrics)
+```
+
+```python
+test_metrics = trainer.evaluate()
+trainer.log_metrics("eval", test_metrics)
 ```
 
 ```python tags=[]
@@ -242,17 +223,20 @@ trainer.evaluate(dataset["valid"])
 # Visualize results
 
 ```python tags=[]
-predict_partition = dataset["valid"].shuffle(seed=42).select(range(9))
-prepared_predict = predict_partition.map(preprocess_val, remove_columns=["image"], batched=True)
+prepared_predict = dataset["valid"].shuffle(seed=42).select(range(9))
 ```
 
 ```python tags=[]
-predictions = trainer.predict(test_dataset = prepared_predict).predictions
+predictions = trainer.predict(test_dataset = prepared_predict).predictions[:,0]
 ```
 
 ```python
-out = (predictions > 0.5)
-plot_batch(image = predict_partition["image"], label = out)
+out = np.zeros_like(predictions)
+threshold = 0.5
+out[predictions > threshold] = 1
+
+images = [predict['image'] for predict in prepared_predict]
+plot_batch(image = images, label = np.asarray(out))
 ```
 
 ```python
