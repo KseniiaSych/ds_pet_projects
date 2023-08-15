@@ -29,5 +29,11 @@ Data: https://www.kaggle.com/datasets/samuelcortinhas/muffin-vs-chihuahua-image-
 ```
 Neural networks for image binary classification task.
 
+## 6. Pointcloud processing
+```diff
+Data: https://www.kaggle.com/datasets/balraj98/modelnet40-princeton-3d-object-dataset 
+```
+Classification pointclouds with neural network models.
+
 
 
