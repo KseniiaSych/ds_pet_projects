@@ -87,7 +87,7 @@ def read_off(file):
 ```
 
 ```python tags=[]
-with open(path/"chair/train/chair_0001.off", 'r') as f:
+with open(path/"bed/train/bed_0001.off", 'r') as f:
     verts, faces = read_off(f)
 ```
 
@@ -506,7 +506,9 @@ optimizer = torch.optim.Adam(pointnet.parameters(), lr=0.001)
 ```
 
 ```python tags=[]
-def train(model, train_loader, val_loader=None,  epochs=15, save=True):
+def train(model, train_loader, val_loader=None,  epochs=15, save=True, losses = None, accuracies = None):
+    losses = losses or []
+    accuracies = accuracies or []
     path_to_save = os.path.join('.', f"{time.time()}_run")
     for epoch in range(epochs): 
         pointnet.train()
@@ -517,6 +519,7 @@ def train(model, train_loader, val_loader=None,  epochs=15, save=True):
             outputs, m3x3, m64x64 = pointnet(inputs.transpose(1,2))
 
             loss = pointnetloss(outputs, labels, m3x3, m64x64)
+            losses.append(loss)
             loss.backward()
             optimizer.step()
 
@@ -540,16 +543,20 @@ def train(model, train_loader, val_loader=None,  epochs=15, save=True):
                     total += labels.size(0)
                     correct += (predicted == labels).sum().item()
             val_acc = 100. * correct / total
+            accuracies.append(accuracies)
             print('Valid accuracy: %d %%' % val_acc)
 
         # save the model
         if save:
             os.makedirs(path_to_save, exist_ok = True)
             torch.save(pointnet.state_dict(), os.path.join(path_to_save, f'save_{epoch}.pth'))
+        return losses, accuracies
 ```
 
 ```python tags=[]
-train(pointnet, train_loader, valid_loader,  save=False)
+losses = []
+accuracies = []
+train(pointnet, train_loader, valid_loader,  save=False, losses = losses, accuracies = accuracies)
 ```
 
 # Test
@@ -585,7 +592,7 @@ with torch.no_grad():
 
 ```python tags=[]
 accuracy = accuracy_score(all_labels_np, all_preds_np, normalize=True)
-print(f'Overall accuracy {accuracy})
+print(f'Overall accuracy {accuracy}')
 ```
 
 ```python tags=[]
