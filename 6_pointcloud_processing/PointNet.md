@@ -569,8 +569,8 @@ train(pointnet, train_loader, valid_loader,  save=False)
 # Test
 
 ```python tags=[]
-pointnet = PointNet()
-pointnet.load_state_dict(torch.load('./pretrained/save.pth',  map_location=torch.device('cpu')))
+pointnet = PointNet(classes = n_classes)
+pointnet.load_state_dict(torch.load('./1692251457.0953014_run/save_4.pth'))
 pointnet.eval();
 ```
 
