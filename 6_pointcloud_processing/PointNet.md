@@ -20,6 +20,7 @@ import os
 from pathlib  import Path
 import itertools
 import time
+import csv
 
 import pandas as pd
 import numpy as np
@@ -506,20 +507,27 @@ optimizer = torch.optim.Adam(pointnet.parameters(), lr=0.001)
 ```
 
 ```python tags=[]
-def train(model, train_loader, val_loader=None,  epochs=15, save=True, losses = None, accuracies = None):
-    losses = losses or []
-    accuracies = accuracies or []
+headers = ["loss", "accuracy"]
+def train(model, train_loader, val_loader=None,  epochs=15, save=True):
     path_to_save = os.path.join('.', f"{time.time()}_run")
+    metrics_file_name =  os.path.join(path_to_save, 'event.csv')
+    if save:
+        os.makedirs(path_to_save, exist_ok = True)
+        with open(metrics_file_name, 'w', encoding='UTF8') as f:
+            writer = csv.writer(f)
+            writer.writerow(headers)
+    
     for epoch in range(epochs): 
         pointnet.train()
         running_loss = 0.0
+        losses = []
         for i, data in enumerate(train_loader, 0):
             inputs, labels = data['pointcloud'].to(device).float(), data['category'].to(device)
             optimizer.zero_grad()
             outputs, m3x3, m64x64 = pointnet(inputs.transpose(1,2))
 
             loss = pointnetloss(outputs, labels, m3x3, m64x64)
-            losses.append(loss)
+            losses.append(loss.item())
             loss.backward()
             optimizer.step()
 
@@ -532,7 +540,7 @@ def train(model, train_loader, val_loader=None,  epochs=15, save=True, losses = 
 
         pointnet.eval()
         correct = total = 0
-
+        total_loss = np.mean(losses)
         # validation
         if val_loader:
             with torch.no_grad():
@@ -543,20 +551,19 @@ def train(model, train_loader, val_loader=None,  epochs=15, save=True, losses = 
                     total += labels.size(0)
                     correct += (predicted == labels).sum().item()
             val_acc = 100. * correct / total
-            accuracies.append(accuracies)
             print('Valid accuracy: %d %%' % val_acc)
 
         # save the model
         if save:
-            os.makedirs(path_to_save, exist_ok = True)
             torch.save(pointnet.state_dict(), os.path.join(path_to_save, f'save_{epoch}.pth'))
-        return losses, accuracies
+            with open(metrics_file_name, 'a', encoding='UTF8') as f:
+                writer = csv.writer(f)
+                writer.writerow([total_loss, val_acc or 0])
+            
 ```
 
 ```python tags=[]
-losses = []
-accuracies = []
-train(pointnet, train_loader, valid_loader,  save=False, losses = losses, accuracies = accuracies)
+train(pointnet, train_loader, valid_loader,  save=False)
 ```
 
 # Test
