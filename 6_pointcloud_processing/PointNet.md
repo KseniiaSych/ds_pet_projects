@@ -24,11 +24,14 @@ import csv
 
 import pandas as pd
 import numpy as np
-from sklearn.metrics import confusion_matrix, accuracy_score
+from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 
 import torch
 from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms, utils
+
+import lightning.pytorch as pl
+from lightning.pytorch import Trainer
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -375,8 +378,13 @@ print('Example class: ', inv_classes[train_ds[0]['category']])
 ```
 
 ```python tags=[]
-train_loader = DataLoader(dataset=train_ds, batch_size=32, shuffle=True)
-valid_loader = DataLoader(dataset=valid_ds, batch_size=64)
+num_workers= 4
+batch_size = 64
+```
+
+```python tags=[]
+train_loader = DataLoader(dataset=train_ds, batch_size=batch_size, num_workers = num_workers, shuffle=True)
+valid_loader = DataLoader(dataset=valid_ds, batch_size=batch_size, num_workers = num_workers,)
 ```
 
 # Model
@@ -450,7 +458,7 @@ class Transform(nn.Module):
         output = nn.Flatten(1)(xb)
         return output, matrix3x3, matrix64x64
 
-class PointNet(nn.Module):
+class PointNet(pl.LightningModule):
     def __init__(self, classes = 10):
         super().__init__()
         self.transform = Transform()
@@ -463,27 +471,62 @@ class PointNet(nn.Module):
         self.bn2 = nn.BatchNorm1d(256)
         self.dropout = nn.Dropout(p=0.3)
         self.logsoftmax = nn.LogSoftmax(dim=1)
-
+        
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.parameters(), lr=1e-3)
+        return optimizer
+    
     def forward(self, input):
         xb, matrix3x3, matrix64x64 = self.transform(input)
         xb = F.relu(self.bn1(self.fc1(xb)))
         xb = F.relu(self.bn2(self.dropout(self.fc2(xb))))
         output = self.fc3(xb)
         return self.logsoftmax(output), matrix3x3, matrix64x64
+    
+    def loss(self, outputs, labels, m3x3, m64x64, alpha = 0.0001):
+        criterion = torch.nn.NLLLoss()
+        bs=outputs.size(0)
+        id3x3 = torch.eye(3, requires_grad=True).repeat(bs,1,1)
+        id64x64 = torch.eye(64, requires_grad=True).repeat(bs,1,1)
+        if outputs.is_cuda:
+            id3x3=id3x3.cuda()
+            id64x64=id64x64.cuda()
+        diff3x3 = id3x3-torch.bmm(m3x3,m3x3.transpose(1,2))
+        diff64x64 = id64x64-torch.bmm(m64x64,m64x64.transpose(1,2))
+        print(outputs.shape())
+        return criterion(outputs, labels) + alpha * (torch.norm(diff3x3)+torch.norm(diff64x64)) / float(bs)
+    
+    def accuracy(self, predicted, labels):
+        return accuracy_score(labels, predicted, normalize=True)
+    
+    def step(self, batch, batch_idx, metrics_names):
+        inputs, labels = data['pointcloud'].float(), data['category']
+        outputs, m3x3, m64x64 = self.forward(inputs.transpose(1,2))
+        loss = self.loss(outputs, labels, m3x3, m64x64)
+        acc = self.accuracy(inputs, outputs)
+        metrics = dict(zip(metrics_names, [loss, acc]))
+        self.log_dict(metrics, on_step=False, on_epoch=True)
+        return loss
+    
+    def training_step(self, batch, batch_idx):
+        return self.step( batch, batch_idx, ['train_loss', 'train_acc'])
+    
+    def test_step(self, batch, batch_idx):
+        return self.step( batch, batch_idx, ['test_loss', 'test_acc'])
+    
+    def validation_step(self, batch, batch_idx):
+        return self.step( batch, batch_idx, ['val_loss', 'val_acc'])
 ```
 
 ```python tags=[]
-def pointnetloss(outputs, labels, m3x3, m64x64, alpha = 0.0001):
-    criterion = torch.nn.NLLLoss()
-    bs=outputs.size(0)
-    id3x3 = torch.eye(3, requires_grad=True).repeat(bs,1,1)
-    id64x64 = torch.eye(64, requires_grad=True).repeat(bs,1,1)
-    if outputs.is_cuda:
-        id3x3=id3x3.cuda()
-        id64x64=id64x64.cuda()
-    diff3x3 = id3x3-torch.bmm(m3x3,m3x3.transpose(1,2))
-    diff64x64 = id64x64-torch.bmm(m64x64,m64x64.transpose(1,2))
-    return criterion(outputs, labels) + alpha * (torch.norm(diff3x3)+torch.norm(diff64x64)) / float(bs)
+model = PointNet(classes = n_classes)
+optimizer = model.configure_optimizers()
+trainer = Trainer(max_epochs=15, check_val_every_n_epoch=1)
+trainer.fit(model,  train_loader, valid_loader)
+```
+
+```python
+trainer.test(test_loader)
 ```
 
 # Training loop
@@ -570,7 +613,7 @@ train(pointnet, train_loader, valid_loader,  save=False)
 
 ```python tags=[]
 pointnet = PointNet(classes = n_classes)
-pointnet.load_state_dict(torch.load('./1692251457.0953014_run/save_4.pth'))
+pointnet.load_state_dict(torch.load('./pretrained/save.pth'))
 pointnet.eval();
 ```
 
@@ -598,21 +641,34 @@ with torch.no_grad():
 ```
 
 ```python tags=[]
+labels = list(inv_classes.keys())
 accuracy = accuracy_score(all_labels_np, all_preds_np, normalize=True)
-print(f'Overall accuracy {accuracy}')
+avg_precision = precision_score(all_labels_np, all_preds_np, average='macro', labels = labels )
+avg_recall = recall_score(all_labels_np, all_preds_np, average='macro', labels = labels)
+avg_f1 = f1_score(all_labels_np, all_preds_np, average='macro')
+
+print(f'Overall accuracy - {accuracy:.4f}')
+print(f'Mean average precision - {avg_precision:.4f}')
+print(f'Mean average recall - {avg_recall:.4f}')
+print(f'Mean f1 - {avg_f1:.4f}')
 ```
 
 ```python tags=[]
-accuracy_by_class = {l: accuracy_score(all_labels_np[all_labels_np==l], all_preds_np[all_labels_np==l], normalize=True) 
+classes_inv = {v:k for k,v in classes.items()}
+accuracy_by_class = {classes_inv[l]: accuracy_score(all_labels_np[all_labels_np==l], all_preds_np[all_labels_np==l], normalize=True) 
                      for l in np.unique(all_labels_np)}
 ```
 
 ```python tags=[]
-print(f'Accuracy by class {accuracy_by_class}')
+acc_df = pd.DataFrame.from_dict(accuracy_by_class, orient='index', columns=['accuracy'])
 ```
 
 ```python tags=[]
-print('Average accuracy for class', np.mean(list(accuracy_by_class.values())))
+acc_df.plot.bar().set_title("Accuracy by class");
+```
+
+```python tags=[]
+print('Average accuracy by class', acc_df.accuracy.mean())
 ```
 
 ```python tags=[]
@@ -622,7 +678,8 @@ cm
 
 ```python tags=[]
 # function from https://deeplizard.com/learn/video/0LhiS6yu2qQ
-def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', cmap=plt.cm.Blues):
+def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', 
+                          cmap=plt.cm.bwr, print_num=False):
     if normalize:
         cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
         print("Normalized confusion matrix")
@@ -633,13 +690,14 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
     plt.title(title)
     plt.colorbar()
     tick_marks = np.arange(len(classes))
-    plt.xticks(tick_marks, classes, rotation=45)
+    plt.xticks(tick_marks, classes, rotation=90)
     plt.yticks(tick_marks, classes)
-
-    fmt = '.2f' if normalize else 'd'
-    thresh = cm.max() / 2.
-    for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
-        plt.text(j, i, format(cm[i, j], fmt), horizontalalignment="center", color="white" if cm[i, j] > thresh else "black")
+    
+    if print_num:
+        fmt = '.2f' if normalize else 'd'
+        thresh = cm.max() / 2.
+        for i, j in itertools.product(range(cm.shape[0]), range(cm.shape[1])):
+            plt.text(j, i, format(cm[i, j], fmt), horizontalalignment="center", color="white" if cm[i, j] > thresh else "black")
 
     plt.tight_layout()
     plt.ylabel('True label')
@@ -654,4 +712,8 @@ plot_confusion_matrix(cm, list(classes.keys()), normalize=True)
 ```python tags=[]
 plt.figure(figsize=(8,8))
 plot_confusion_matrix(cm, list(classes.keys()), normalize=False)
+```
+
+```python
+
 ```
