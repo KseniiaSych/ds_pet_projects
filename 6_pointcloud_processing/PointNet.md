@@ -15,7 +15,7 @@ jupyter:
 
 Code is borrowed from from [Nikita Karaev's](https://github.com/nikitakaraevv) [PointNet implementation](https://github.com/nikitakaraevv/pointnet) with eventual changes in order to play around with the model. 
 
-```python tags=[]
+```python
 import os
 from pathlib  import Path
 import itertools
@@ -41,12 +41,11 @@ import plotly.express as px
 import matplotlib.pyplot as plt
 
 import math, random
-random.seed = 42
 ```
 
 # Visualize
 
-```python tags=[]
+```python
 path = Path("../data/ModelNet40")
 
 folders = [dir for dir in sorted(os.listdir(path)) if os.path.isdir(path/dir)]
@@ -62,21 +61,21 @@ cls_size = pd.DataFrame.from_dict(
     columns = ["cls_len"])
 ```
 
-```python tags=[]
+```python
 cls_size
 ```
 
-```python tags=[]
+```python
 len_proportion = cls_size.cls_len/sum(cls_size.cls_len)*100
 len_proportion
 ```
 
-```python tags=[]
+```python
 plot = len_proportion.plot.pie(figsize=(8, 8),rotatelabels=True, autopct='%1.1f%%', pctdistance=0.85)
 plot.axes.get_yaxis().set_visible(False)
 ```
 
-```python tags=[]
+```python
 def read_off(file):
     header = file.readline().strip()
     if not header.startswith('OFF'):
@@ -90,21 +89,21 @@ def read_off(file):
     return verts, faces
 ```
 
-```python tags=[]
+```python
 with open(path/"bed/train/bed_0001.off", 'r') as f:
     verts, faces = read_off(f)
 ```
 
-```python tags=[]
+```python
 i,j,k = np.array(faces).T
 x,y,z = np.array(verts).T
 ```
 
-```python tags=[]
+```python
 len(x)
 ```
 
-```python tags=[]
+```python
 def visualize_rotate(data):
     x_eye, y_eye, z_eye = 1.25, 1.25, 0.8
     frames=[]
@@ -143,15 +142,15 @@ def visualize_rotate(data):
     return fig
 ```
 
-```python tags=[]
+```python
 visualize_rotate([go.Mesh3d(x=x, y=y, z=z, color='lightpink', opacity=0.50, i=i,j=j,k=k)]).show()
 ```
 
-```python tags=[]
+```python
 visualize_rotate([go.Scatter3d(x=x, y=y, z=z, mode='markers')]).show()
 ```
 
-```python tags=[]
+```python
 def pcshow(xs,ys,zs):
     data=[go.Scatter3d(x=xs, y=ys, z=zs,
                                    mode='markers')]
@@ -163,13 +162,13 @@ def pcshow(xs,ys,zs):
     fig.show()
 ```
 
-```python tags=[]
+```python
 pcshow(x,y,z)
 ```
 
 # Transform
 
-```python tags=[]
+```python
 class PointSampler(object):
     def __init__(self, output_size):
         assert isinstance(output_size, int)
@@ -215,19 +214,17 @@ class PointSampler(object):
         return sampled_points
 ```
 
-```python tags=[]
+```python
 pointcloud = PointSampler(3000)((verts, faces))
 ```
 
-```python tags=[]
+```python
 pcshow(*pointcloud.T)
 ```
 
-<!-- #region tags=[] -->
 # Normalize
-<!-- #endregion -->
 
-```python tags=[]
+```python
 class Normalize(object):
     def __call__(self, pointcloud):
         assert len(pointcloud.shape)==2
@@ -238,19 +235,17 @@ class Normalize(object):
         return  norm_pointcloud
 ```
 
-```python tags=[]
+```python
 norm_pointcloud = Normalize()(pointcloud)
 ```
 
-```python tags=[]
+```python
 pcshow(*norm_pointcloud.T)
 ```
 
-<!-- #region tags=[] -->
 # Augmentations
-<!-- #endregion -->
 
-```python tags=[]
+```python
 class RandRotation_z(object):
     def __call__(self, pointcloud):
         assert len(pointcloud.shape)==2
@@ -273,18 +268,18 @@ class RandomNoise(object):
         return  noisy_pointcloud
 ```
 
-```python tags=[]
+```python
 rot_pointcloud = RandRotation_z()(norm_pointcloud)
 noisy_rot_pointcloud = RandomNoise()(rot_pointcloud)
 ```
 
-```python tags=[]
+```python
 pcshow(*noisy_rot_pointcloud.T)
 ```
 
 # ToTensor
 
-```python tags=[]
+```python
 class ToTensor(object):
     def __call__(self, pointcloud):
         assert len(pointcloud.shape)==2
@@ -292,11 +287,11 @@ class ToTensor(object):
         return torch.from_numpy(pointcloud)    
 ```
 
-```python tags=[]
+```python
 ToTensor()(noisy_rot_pointcloud)
 ```
 
-```python tags=[]
+```python
 def default_transforms():
     return transforms.Compose([
                                 PointSampler(1024),
@@ -305,11 +300,9 @@ def default_transforms():
                               ])
 ```
 
-<!-- #region tags=[] -->
 # Dataset
-<!-- #endregion -->
 
-```python tags=[]
+```python
 class PointCloudData(Dataset):
     def __init__(self, root_dir, valid=False, folder="train", transform=default_transforms()):
         self.root_dir = root_dir
@@ -345,7 +338,7 @@ class PointCloudData(Dataset):
                 'category': self.classes[category]}
 ```
 
-```python tags=[]
+```python
 train_transforms = transforms.Compose([
                     PointSampler(1024),
                     Normalize(),
@@ -355,17 +348,17 @@ train_transforms = transforms.Compose([
                     ])
 ```
 
-```python tags=[]
+```python
 train_ds = PointCloudData(path, transform=train_transforms)
 valid_ds = PointCloudData(path, valid=True, folder='test', transform=train_transforms)
 ```
 
-```python tags=[]
+```python
 inv_classes = {i: cat for cat, i in train_ds.classes.items()};
 inv_classes
 ```
 
-```python tags=[]
+```python
 train_len = len(train_ds)
 valid_len = len(valid_ds)
 total = train_len + valid_len
@@ -377,19 +370,18 @@ print('Sample pointcloud shape: ', train_ds[0]['pointcloud'].size())
 print('Example class: ', inv_classes[train_ds[0]['category']])
 ```
 
-```python tags=[]
-num_workers= 4
-batch_size = 64
+```python
+batch_size = 128
 ```
 
-```python tags=[]
-train_loader = DataLoader(dataset=train_ds, batch_size=batch_size, num_workers = num_workers, shuffle=True)
-valid_loader = DataLoader(dataset=valid_ds, batch_size=batch_size, num_workers = num_workers,)
+```python
+train_loader = DataLoader(dataset=train_ds, batch_size=batch_size, shuffle=True)
+valid_loader = DataLoader(dataset=valid_ds, batch_size=batch_size)
 ```
 
 # Model
 
-```python tags=[]
+```python
 class Tnet(nn.Module):
     def __init__(self, k=3):
         super().__init__()
@@ -493,17 +485,17 @@ class PointNet(pl.LightningModule):
             id64x64=id64x64.cuda()
         diff3x3 = id3x3-torch.bmm(m3x3,m3x3.transpose(1,2))
         diff64x64 = id64x64-torch.bmm(m64x64,m64x64.transpose(1,2))
-        print(outputs.shape())
         return criterion(outputs, labels) + alpha * (torch.norm(diff3x3)+torch.norm(diff64x64)) / float(bs)
     
-    def accuracy(self, predicted, labels):
-        return accuracy_score(labels, predicted, normalize=True)
+    def accuracy(self, outputs, labels):
+        _, predicted = torch.max(outputs.data, 1)
+        return accuracy_score(labels.cpu().numpy(), predicted.cpu().numpy(), normalize=True)
     
     def step(self, batch, batch_idx, metrics_names):
-        inputs, labels = data['pointcloud'].float(), data['category']
+        inputs, labels = batch['pointcloud'].float(), batch['category']
         outputs, m3x3, m64x64 = self.forward(inputs.transpose(1,2))
         loss = self.loss(outputs, labels, m3x3, m64x64)
-        acc = self.accuracy(inputs, outputs)
+        acc = self.accuracy(outputs, labels)
         metrics = dict(zip(metrics_names, [loss, acc]))
         self.log_dict(metrics, on_step=False, on_epoch=True)
         return loss
@@ -518,106 +510,28 @@ class PointNet(pl.LightningModule):
         return self.step( batch, batch_idx, ['val_loss', 'val_acc'])
 ```
 
-```python tags=[]
+# Train
+
+```python
 model = PointNet(classes = n_classes)
 optimizer = model.configure_optimizers()
-trainer = Trainer(max_epochs=15, check_val_every_n_epoch=1)
+trainer = Trainer(max_epochs=15, check_val_every_n_epoch=1, log_every_n_steps = 10)
 trainer.fit(model,  train_loader, valid_loader)
 ```
 
 ```python
-trainer.test(test_loader)
-```
-
-# Training loop
-
-```python tags=[]
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print(device)
-```
-
-```python tags=[]
-pointnet = PointNet(classes = n_classes)
-pointnet.to(device);
-```
-
-```python tags=[]
-pointnet
-```
-
-```python tags=[]
-optimizer = torch.optim.Adam(pointnet.parameters(), lr=0.001)
-```
-
-```python tags=[]
-headers = ["loss", "accuracy"]
-def train(model, train_loader, val_loader=None,  epochs=15, save=True):
-    path_to_save = os.path.join('.', f"{time.time()}_run")
-    metrics_file_name =  os.path.join(path_to_save, 'event.csv')
-    if save:
-        os.makedirs(path_to_save, exist_ok = True)
-        with open(metrics_file_name, 'w', encoding='UTF8') as f:
-            writer = csv.writer(f)
-            writer.writerow(headers)
-    
-    for epoch in range(epochs): 
-        pointnet.train()
-        running_loss = 0.0
-        losses = []
-        for i, data in enumerate(train_loader, 0):
-            inputs, labels = data['pointcloud'].to(device).float(), data['category'].to(device)
-            optimizer.zero_grad()
-            outputs, m3x3, m64x64 = pointnet(inputs.transpose(1,2))
-
-            loss = pointnetloss(outputs, labels, m3x3, m64x64)
-            losses.append(loss.item())
-            loss.backward()
-            optimizer.step()
-
-            # print statistics
-            running_loss += loss.item()
-            if i % 10 == 9:    # print every 10 mini-batches
-                    print('[Epoch: %d, Batch: %4d / %4d], loss: %.3f' %
-                        (epoch + 1, i + 1, len(train_loader), running_loss / 10))
-                    running_loss = 0.0
-
-        pointnet.eval()
-        correct = total = 0
-        total_loss = np.mean(losses)
-        # validation
-        if val_loader:
-            with torch.no_grad():
-                for data in val_loader:
-                    inputs, labels = data['pointcloud'].to(device).float(), data['category'].to(device)
-                    outputs, __, __ = pointnet(inputs.transpose(1,2))
-                    _, predicted = torch.max(outputs.data, 1)
-                    total += labels.size(0)
-                    correct += (predicted == labels).sum().item()
-            val_acc = 100. * correct / total
-            print('Valid accuracy: %d %%' % val_acc)
-
-        # save the model
-        if save:
-            torch.save(pointnet.state_dict(), os.path.join(path_to_save, f'save_{epoch}.pth'))
-            with open(metrics_file_name, 'a', encoding='UTF8') as f:
-                writer = csv.writer(f)
-                writer.writerow([total_loss, val_acc or 0])
-            
-```
-
-```python tags=[]
 train(pointnet, train_loader, valid_loader,  save=False)
 ```
 
 # Test
 
-```python tags=[]
+```python
 pointnet = PointNet(classes = n_classes)
 pointnet.load_state_dict(torch.load('./pretrained/save.pth'))
 pointnet.eval();
 ```
 
-```python tags=[]
+```python
 pointnet
 ```
 
@@ -640,7 +554,7 @@ with torch.no_grad():
         all_labels_np = np.append(all_labels_np, labels.numpy(), axis=0)
 ```
 
-```python tags=[]
+```python
 labels = list(inv_classes.keys())
 accuracy = accuracy_score(all_labels_np, all_preds_np, normalize=True)
 avg_precision = precision_score(all_labels_np, all_preds_np, average='macro', labels = labels )
@@ -653,30 +567,30 @@ print(f'Mean average recall - {avg_recall:.4f}')
 print(f'Mean f1 - {avg_f1:.4f}')
 ```
 
-```python tags=[]
+```python
 classes_inv = {v:k for k,v in classes.items()}
 accuracy_by_class = {classes_inv[l]: accuracy_score(all_labels_np[all_labels_np==l], all_preds_np[all_labels_np==l], normalize=True) 
                      for l in np.unique(all_labels_np)}
 ```
 
-```python tags=[]
+```python
 acc_df = pd.DataFrame.from_dict(accuracy_by_class, orient='index', columns=['accuracy'])
 ```
 
-```python tags=[]
+```python
 acc_df.plot.bar().set_title("Accuracy by class");
 ```
 
-```python tags=[]
+```python
 print('Average accuracy by class', acc_df.accuracy.mean())
 ```
 
-```python tags=[]
+```python
 cm = confusion_matrix(all_labels, all_preds);
 cm
 ```
 
-```python tags=[]
+```python
 # function from https://deeplizard.com/learn/video/0LhiS6yu2qQ
 def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', 
                           cmap=plt.cm.bwr, print_num=False):
@@ -704,16 +618,12 @@ def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix'
     plt.xlabel('Predicted label')
 ```
 
-```python tags=[]
+```python
 plt.figure(figsize=(8,8))
 plot_confusion_matrix(cm, list(classes.keys()), normalize=True)
 ```
 
-```python tags=[]
+```python
 plt.figure(figsize=(8,8))
 plot_confusion_matrix(cm, list(classes.keys()), normalize=False)
-```
-
-```python
-
 ```
