@@ -6,7 +6,7 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.14.4
+      jupytext_version: 1.15.0
   kernelspec:
     display_name: Python 3 (ipykernel)
     language: python
@@ -90,7 +90,7 @@ def read_off(file):
 ```
 
 ```python
-with open(path/"bed/train/bed_0001.off", 'r') as f:
+with open(path/"flower_pot/train/flower_pot_0001.off", 'r') as f:
     verts, faces = read_off(f)
 ```
 
@@ -451,7 +451,7 @@ class Transform(nn.Module):
         return output, matrix3x3, matrix64x64
 
 class PointNet(pl.LightningModule):
-    def __init__(self, classes = 10):
+    def __init__(self, classes = 40):
         super().__init__()
         self.transform = Transform()
         self.fc1 = nn.Linear(1024, 512)
@@ -510,8 +510,6 @@ class PointNet(pl.LightningModule):
         return self.step( batch, batch_idx, ['val_loss', 'val_acc'])
 ```
 
-# Train
-
 ```python
 model = PointNet(classes = n_classes)
 optimizer = model.configure_optimizers()
@@ -526,8 +524,7 @@ train(pointnet, train_loader, valid_loader,  save=False)
 # Test
 
 ```python
-pointnet = PointNet(classes = n_classes)
-pointnet.load_state_dict(torch.load('./pretrained/save.pth'))
+pointnet =  PointNet.load_from_checkpoint("./pointnet/lightning_logs/version_0/checkpoints/epoch=14-step=1155.ckpt")
 pointnet.eval();
 ```
 
@@ -546,12 +543,14 @@ with torch.no_grad():
         print('Batch [%4d / %4d]' % (i+1, len(valid_loader)))
                    
         inputs, labels = data['pointcloud'].float(), data['category']
-        outputs, __, __ = pointnet(inputs.transpose(1,2))
+        outputs, __, __ = pointnet(inputs.transpose(1,2).cuda())
         _, preds = torch.max(outputs.data, 1)
-        all_preds += list(preds.numpy())
-        all_labels += list(labels.numpy())
-        all_preds_np = np.append(all_preds_np, preds.numpy(), axis=0)
-        all_labels_np = np.append(all_labels_np, labels.numpy(), axis=0)
+        preds_np = preds.cpu().numpy()
+        labels_np = labels.cpu().numpy()
+        all_preds += list(preds_np)
+        all_labels += list(labels_np)
+        all_preds_np = np.append(all_preds_np, preds_np, axis=0)
+        all_labels_np = np.append(all_labels_np, labels_np, axis=0)
 ```
 
 ```python
@@ -626,4 +625,8 @@ plot_confusion_matrix(cm, list(classes.keys()), normalize=True)
 ```python
 plt.figure(figsize=(8,8))
 plot_confusion_matrix(cm, list(classes.keys()), normalize=False)
+```
+
+```python
+
 ```
