@@ -21,7 +21,8 @@ import numpy as np
 import datasets
 from datasets import load_dataset
 from transformers import DefaultDataCollator
-from transformers import AutoImageProcessor, AutoModelForImageClassification, TrainingArguments, Trainer
+from transformers import (AutoImageProcessor, AutoModelForImageClassification, TrainingArguments,
+                          Trainer, EarlyStoppingCallback)
 import evaluate
 
 import torch
@@ -44,9 +45,9 @@ id2label = {v: k for k, v in label2id.items()}
 class_names = list(label2id.keys())
 ```
 
-```python tags=[]
+```python
 checkpoint = "microsoft/resnet-50"
-batch_size = 16
+batch_size = 64
 ```
 
 # View dataset
@@ -74,7 +75,7 @@ for class_name in class_names:
 view_dataset = load_dataset("imagefolder", data_dir=dataroot, split="train").shuffle(seed=42).select(range(9))
 ```
 
-```python tags=[]
+```python
 view_dataset
 ```
 
@@ -105,13 +106,13 @@ plot_batch(dataset = view_dataset)
 
 # Train model
 
-```python tags=[]
+```python
 image_processor = AutoImageProcessor.from_pretrained(checkpoint)
 normalize = Normalize(mean=image_processor.image_mean, std=image_processor.image_std)
 size = (image_processor.size["shortest_edge"], image_processor.size["shortest_edge"])
 ```
 
-```python tags=[]
+```python
 train_transform = Compose(
     [
             Resize(size),
@@ -134,7 +135,7 @@ preprocess_train = lambda examples: preprocess(examples, train_transform)
 preprocess_test = lambda examples: preprocess(examples, test_transform)
 ```
 
-```python tags=[]
+```python
 train_tmp = load_dataset("imagefolder", data_dir=dataroot, split="train")
 train_split = train_tmp.train_test_split(test_size=0.8, stratify_by_column = "label", shuffle = True)
 
@@ -144,15 +145,13 @@ dataset = datasets.DatasetDict({
     'valid': train_split['train']})
 ```
 
-```python tags=[]
+```python
 dataset["train"].set_transform(preprocess_train)
 dataset["test"].set_transform(preprocess_test)
 dataset["valid"].set_transform(preprocess_test)
 ```
 
-<!-- #region tags=[] -->
 ## Train
-<!-- #endregion -->
 
 ```python
 model = AutoModelForImageClassification.from_pretrained(
@@ -162,7 +161,7 @@ model = AutoModelForImageClassification.from_pretrained(
     ignore_mismatched_sizes = True)
 ```
 
-```python tags=[]
+```python
 metric = evaluate.load("accuracy")
 def compute_metrics(eval_pred):
     """Computes accuracy on a batch of predictions"""
@@ -178,19 +177,19 @@ def collate_fn(examples):
 
 ```python
 training_args = TrainingArguments(
-    output_dir="muffin-or-dog",
+    output_dir="muffin-or-dog_hugging_face",
     remove_unused_columns=False,
     evaluation_strategy="epoch",
     save_strategy="epoch",
-    learning_rate=5e-5,
+    learning_rate=1e-3,
     per_device_train_batch_size=batch_size,
     gradient_accumulation_steps=4,
     per_device_eval_batch_size=batch_size,
-    num_train_epochs=3,
+    num_train_epochs=20,
     warmup_ratio=0.1,
     logging_steps=10,
     load_best_model_at_end=True,
-    metric_for_best_model="accuracy",
+    metric_for_best_model="eval_loss",
     push_to_hub=False,
     report_to = "none"
 )
@@ -203,42 +202,45 @@ trainer = Trainer(
     eval_dataset=dataset["test"],
     tokenizer=image_processor,
     compute_metrics=compute_metrics,
+    callbacks = [EarlyStoppingCallback(early_stopping_patience=3)]
 )
 ```
 
-```python tags=[]
+```python
 train_results = trainer.train()
 trainer.log_metrics("train", train_results.metrics)
 ```
 
 ```python
-test_metrics = trainer.evaluate()
-trainer.log_metrics("eval", test_metrics)
+trainer.save_metrics("train", train_results.metrics)
 ```
 
-```python tags=[]
-trainer.evaluate(dataset["valid"])
+```python
+test_metrics = trainer.evaluate()
+trainer.log_metrics("eval", test_metrics)
+trainer.save_metrics("eval", test_metrics)
+```
+
+```python
+valid_metrics = trainer.evaluate(dataset["valid"])
+trainer.save_metrics("validation", valid_metrics)
 ```
 
 # Visualize results
 
-```python tags=[]
+```python
 prepared_predict = dataset["valid"].shuffle(seed=42).select(range(9))
 ```
 
-```python tags=[]
-predictions = trainer.predict(test_dataset = prepared_predict).predictions[:,0]
+```python
+output = trainer.predict(test_dataset = prepared_predict)
 ```
 
 ```python
-out = np.zeros_like(predictions)
-threshold = 0.5
-out[predictions > threshold] = 1
+predictions = np.argmax(output.predictions, axis=1)
+```
 
+```python
 images = [predict['image'] for predict in prepared_predict]
-plot_batch(image = images, label = np.asarray(out))
-```
-
-```python
-
+plot_batch(image = images, label = np.asarray(predictions))
 ```

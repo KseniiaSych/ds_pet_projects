@@ -6,14 +6,14 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.14.4
+      jupytext_version: 1.15.0
   kernelspec:
     display_name: Python 3 (ipykernel)
     language: python
     name: python3
 ---
 
-```python tags=[]
+```python
 import os
 from tqdm import tqdm
 
@@ -38,11 +38,11 @@ import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
 ```
 
-```python tags=[]
+```python
 seed_everything(42, workers=True)
 ```
 
-```python tags=[]
+```python
 dataroot = '../data/muffin-vs-chihuahua-image-classification'
 train_dir = 'train'
 test_dir = 'test'
@@ -53,7 +53,7 @@ class_names = ['chihuahua', 'muffin']
 
 # View dataset
 
-```python tags=[]
+```python
 def print_dataset_len(dataroot, class_name, subsets=None):
     existing_sets = subsets or []
     print(f'{class_name}:')
@@ -66,13 +66,13 @@ def print_dataset_len(dataroot, class_name, subsets=None):
             print(f'{name} - {l} : {l/total_sum*100:.2f}%')
 ```
 
-```python tags=[]
+```python
 print("Dataset lenght by class and split:")
 for class_name in class_names:
     print_dataset_len(dataroot, class_name, subsets)
 ```
 
-```python tags=[]
+```python
 VIEW_BATCH_SIZE = 9
 
 view_transform = transforms.Compose([
@@ -84,7 +84,7 @@ view_dataset = ImageFolder(root = os.path.join(dataroot, train_dir), transform=v
 view_loader = DataLoader(view_dataset, batch_size=VIEW_BATCH_SIZE, shuffle=True, num_workers=4, pin_memory=True)
 ```
 
-```python tags=[]
+```python
 def imshow(img,title):
     img = img.detach().cpu().numpy()
     plt.figure(figsize=(32,10))
@@ -107,17 +107,17 @@ def plot_batch(dataloader= None, image=None, label = None):
         plt.xlabel(imglabel(label[i-1].item()), fontsize=10)
 ```
 
-```python tags=[]
+```python
 plot_batch(dataloader = view_loader)
 ```
 
 # Train model
 
-```python tags=[]
+```python
 BATCH_SIZE = 64
 ```
 
-```python tags=[]
+```python
 class DogVsMuffinDataModule(pl.LightningDataModule):
     def __init__(self, data_dir = ".", batch_size = 32, num_workers = 8):
         super().__init__()
@@ -161,7 +161,7 @@ class DogVsMuffinDataModule(pl.LightningDataModule):
         return DataLoader(self.test, batch_size=self.batch_size, num_workers=self.num_workers, pin_memory=True)
 ```
 
-```python tags=[]
+```python
 class TransferResNet(pl.LightningModule):
     def __init__(self, ):
         super().__init__()
@@ -229,28 +229,29 @@ class TransferResNet(pl.LightningModule):
         return optimizer
 ```
 
-```python tags=[]
+```python
 model = TransferResNet()
 data_module = DogVsMuffinDataModule(dataroot, BATCH_SIZE, num_workers = 4)
 optimizer = model.configure_optimizers()
 
 trainer = Trainer(max_epochs=20, check_val_every_n_epoch=1,
+                  default_root_dir="./muffin-or-dog_lightning",
                   callbacks=[EarlyStopping(monitor="val_loss", patience=3, mode='min')])
 trainer.fit(model, datamodule = data_module)
 ```
 
-```python tags=[]
+```python
 trainer.test(datamodule = data_module)
 ```
 
 # Visualize results
 
-```python tags=[]
+```python
 t = Variable(torch.Tensor([0.5]))  # threshold
 sig = nn.Sigmoid()
 ```
 
-```python tags=[]
+```python
 image, label = next(iter(data_module.test_dataloader()))
 model.eval()
 predictions =  sig(model(image))
@@ -258,18 +259,13 @@ out = (predictions > t)
 plot_batch(image = image, label = out)
 ```
 
-```python tags=[]
-# View metrics
-#tensorboard --logdir lightning_logs/ 
-```
-
 ## Show wrongly classified
 
-```python tags=[]
+```python
 loader = data_module.test_dataloader()
 ```
 
-```python tags=[]
+```python
 w_image =[]
 w_labels =[]
 model.eval()
@@ -288,6 +284,6 @@ except StopIteration:
 print(f'Found {len(w_image)} wrongly classified examples')
 ```
 
-```python tags=[]
+```python
 plot_batch(image = w_image, label = w_labels)
 ```
