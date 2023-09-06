@@ -6,7 +6,7 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.14.4
+      jupytext_version: 1.15.0
   kernelspec:
     display_name: Python 3 (ipykernel)
     language: python
@@ -161,13 +161,6 @@ model = AutoModelForImageClassification.from_pretrained(
     ignore_mismatched_sizes = True)
 ```
 
-```python tags=[]
-#freeze base movel parameters
-for name, param in model.named_parameters():
-    if name.startswith("resnet"):
-        param.requires_grad = False
-```
-
 ```python
 metric = evaluate.load("accuracy")
 def compute_metrics(eval_pred):
@@ -214,16 +207,17 @@ trainer = Trainer(
 ```
 
 ```python
+for p in model.parameters():
+    print(p.requires_grad)
+```
+
+```python
 train_results = trainer.train()
 trainer.log_metrics("train", train_results.metrics)
 ```
 
 ```python
 trainer.save_metrics("train", train_results.metrics)
-```
-
-```python
-
 ```
 
 ```python
