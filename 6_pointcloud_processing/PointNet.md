@@ -258,6 +258,30 @@ class RandRotation_z(object):
         rot_pointcloud = rot_matrix.dot(pointcloud.T).T
         return  rot_pointcloud
     
+class RandRotation_x(object):
+    def __call__(self, pointcloud):
+        assert len(pointcloud.shape)==2
+
+        theta = random.random() * 2. * math.pi
+        rot_matrix = np.array([[1,               0,                0],
+                               [0, math.cos(theta), -math.sin(theta)],
+                               [0, math.sin(theta),  math.cos(theta)]])
+        
+        rot_pointcloud = rot_matrix.dot(pointcloud.T).T
+        return  rot_pointcloud
+    
+class RandRotation_y(object):
+    def __call__(self, pointcloud):
+        assert len(pointcloud.shape)==2
+
+        theta = random.random() * 2. * math.pi
+        rot_matrix = np.array([[math.cos(theta), 0, math.sin(theta)],
+                               [0,               1,               0],
+                               [-math.sin(theta),0, math.cos(theta)]])
+        
+        rot_pointcloud = rot_matrix.dot(pointcloud.T).T
+        return  rot_pointcloud
+    
 class RandomNoise(object):
     def __call__(self, pointcloud):
         assert len(pointcloud.shape)==2
@@ -275,6 +299,18 @@ noisy_rot_pointcloud = RandomNoise()(rot_pointcloud)
 
 ```python
 pcshow(*noisy_rot_pointcloud.T)
+```
+
+```python
+rotx_pointcloud = RandRotation_x()(norm_pointcloud)
+noisy_rotx_pointcloud = RandomNoise()(rotx_pointcloud)
+pcshow(*noisy_rotx_pointcloud.T)
+```
+
+```python
+roty_pointcloud = RandRotation_y()(norm_pointcloud)
+noisy_roty_pointcloud = RandomNoise()(roty_pointcloud)
+pcshow(*noisy_roty_pointcloud.T)
 ```
 
 # ToTensor
@@ -342,6 +378,8 @@ class PointCloudData(Dataset):
 train_transforms = transforms.Compose([
                     PointSampler(1024),
                     Normalize(),
+                    RandRotation_x(),
+                    RandRotation_y(),
                     RandRotation_z(),
                     RandomNoise(),
                     ToTensor()
@@ -524,7 +562,7 @@ train(pointnet, train_loader, valid_loader,  save=False)
 # Test
 
 ```python
-pointnet =  PointNet.load_from_checkpoint("./pointnet/lightning_logs/version_0/checkpoints/epoch=14-step=1155.ckpt")
+pointnet =  PointNet.load_from_checkpoint("./pointnet_from_checkpoint/lightning_logs/version_1/checkpoints/epoch=5-step=462.ckpt")
 pointnet.eval();
 ```
 
@@ -574,6 +612,11 @@ accuracy_by_class = {classes_inv[l]: accuracy_score(all_labels_np[all_labels_np=
 
 ```python
 acc_df = pd.DataFrame.from_dict(accuracy_by_class, orient='index', columns=['accuracy'])
+acc_df = acc_df.sort_values(by=['accuracy'])
+```
+
+```python
+acc_df
 ```
 
 ```python
@@ -594,7 +637,7 @@ cm
 def plot_confusion_matrix(cm, classes, normalize=False, title='Confusion matrix', 
                           cmap=plt.cm.bwr, print_num=False):
     if normalize:
-        cm = cm.astype('float') / cm.sum(axis=1)[:, np.newaxis]
+        cm = cm.astype('float') / cm.sum(axis=0)[np.newaxis, :]
         print("Normalized confusion matrix")
     else:
         print('Confusion matrix, without normalization')
@@ -623,7 +666,7 @@ plot_confusion_matrix(cm, list(classes.keys()), normalize=True)
 ```
 
 ```python
-plt.figure(figsize=(8,8))
+plt.figure(figsize=(7,7))
 plot_confusion_matrix(cm, list(classes.keys()), normalize=False)
 ```
 
