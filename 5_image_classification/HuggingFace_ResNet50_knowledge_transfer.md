@@ -6,7 +6,7 @@ jupyter:
       extension: .md
       format_name: markdown
       format_version: '1.3'
-      jupytext_version: 1.15.0
+      jupytext_version: 1.14.4
   kernelspec:
     display_name: Python 3 (ipykernel)
     language: python
@@ -209,6 +209,13 @@ trainer = Trainer(
 ```python
 for p in model.parameters():
     print(p.requires_grad)
+```
+
+```python
+#freeze base movel parameters
+for name, param in model.named_parameters():
+    if name.startswith("resnet"):
+        param.requires_grad = False
 ```
 
 ```python
