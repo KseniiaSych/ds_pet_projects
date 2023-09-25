@@ -156,7 +156,7 @@ def compute_metrics(eval_pred):
 
 ```python tags=[]
 batch_size = 16
-epochs = 2
+epochs = 20
 metric_name = "accuracy"
 
 training_args = TrainingArguments(
