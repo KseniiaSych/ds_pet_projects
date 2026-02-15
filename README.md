@@ -35,5 +35,9 @@ Data: https://www.kaggle.com/datasets/balraj98/modelnet40-princeton-3d-object-da
 ```
 Classification pointclouds with neural network models.
 
+## 7. Text classification
+
+Classification of facebook messages by sender with model based on distilbert model.
+
 
 
