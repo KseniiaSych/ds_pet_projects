@@ -40,4 +40,7 @@ Classification pointclouds with neural network models.
 Classification of facebook messages by sender with model based on distilbert model.
 
 
+## 8. Text generation
+
+Sentence completion based on facebook messages. Model - "meta-llama/Llama-3.2-1B" + fine-tuned lora adapter.
 
